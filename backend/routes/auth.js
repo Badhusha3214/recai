@@ -8,6 +8,8 @@ const router = express.Router();
 // Register
 router.post('/register', async (req, res) => {
   try {
+    console.log('Registration attempt:', { name: req.body.name, email: req.body.email });
+    
     const { name, email, password } = req.body;
 
     if (!name || !email || !password) {
@@ -16,12 +18,16 @@ router.post('/register', async (req, res) => {
 
     // Check if user exists
     const existingUser = await User.findOne({ email });
+    console.log('Existing user check completed:', !!existingUser);
+    
     if (existingUser) {
       return res.status(400).json({ error: 'User already exists with this email' });
     }
 
     // Create user (password is hashed in pre-save hook)
+    console.log('Creating new user...');
     const user = await User.create({ name, email, password });
+    console.log('User created successfully:', user._id);
 
     const { token, expiresAt } = generateToken(user);
     

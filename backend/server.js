@@ -38,7 +38,13 @@ app.use('/api/recordings', authenticateToken, recordingsRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+  const mongoose = require('mongoose');
+  res.json({ 
+    status: 'ok', 
+    timestamp: new Date().toISOString(),
+    db: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
+    dbState: mongoose.connection.readyState
+  });
 });
 
 // Error handling middleware
