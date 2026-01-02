@@ -2,7 +2,7 @@
 import Recording from '../models/Recording.js';
 import { uploadAudio, getAudioUrl, deleteAudio, getUploadUrl } from '../config/storage.js';
 import { transcribeAudio, transcribeFromUrl } from '../config/transcription.js';
-import { generateSummary, generateMeetingMinutes, extractActionItems } from '../config/gemini.js';
+import { generateSummary, generateMeetingMinutes, extractActionItems, generateTitle } from '../config/gemini.js';
 
 const router = express.Router();
 
@@ -164,9 +164,23 @@ router.post('/', async (req, res) => {
       }
     }
 
+    // Generate AI title from transcript if we have one and no custom title provided
+    let finalTitle = title;
+    if (!title && finalTranscript && finalTranscript.length > 20 && process.env.GEMINI_API_KEY) {
+      try {
+        console.log('Generating AI title...');
+        finalTitle = await generateTitle(finalTranscript);
+      } catch (titleError) {
+        console.error('Failed to generate AI title:', titleError);
+        finalTitle = `Recording ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}`;
+      }
+    } else if (!title) {
+      finalTitle = `Recording ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}`;
+    }
+
     const recording = await Recording.create({
       user: req.user.id,
-      title: title || `Recording ${new Date().toLocaleDateString()}`,
+      title: finalTitle,
       ...audioInfo,
       audioMimeType: mimeType || 'audio/webm',
       duration: transcriptionDuration,
@@ -396,6 +410,35 @@ router.post('/:id/actions', async (req, res) => {
   } catch (error) {
     console.error('Error extracting action items:', error);
     res.status(500).json({ error: 'Failed to extract action items: ' + error.message });
+  }
+});
+
+// Generate AI title from transcript
+router.post('/:id/generate-title', async (req, res) => {
+  try {
+    const recording = await Recording.findOne({
+      _id: req.params.id,
+      user: req.user.id
+    });
+
+    if (!recording) {
+      return res.status(404).json({ error: 'Recording not found' });
+    }
+
+    if (!recording.transcript || recording.transcript.length < 20) {
+      return res.status(400).json({ error: 'Transcript too short to generate title' });
+    }
+
+    console.log('Generating AI title for recording:', recording._id);
+    const title = await generateTitle(recording.transcript);
+
+    recording.title = title;
+    await recording.save();
+
+    res.json({ title, recording });
+  } catch (error) {
+    console.error('Error generating title:', error);
+    res.status(500).json({ error: 'Failed to generate title: ' + error.message });
   }
 });
 

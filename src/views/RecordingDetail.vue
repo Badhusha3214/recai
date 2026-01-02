@@ -183,7 +183,24 @@
       <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 sm:p-6 mb-4 sm:mb-6">
         <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
           <div class="min-w-0 flex-1">
-            <h1 class="text-xl sm:text-2xl font-bold text-gray-900 break-words">{{ recording.title }}</h1>
+            <div class="flex items-center gap-2 flex-wrap">
+              <h1 class="text-xl sm:text-2xl font-bold text-gray-900 break-words">{{ recording.title }}</h1>
+              <button 
+                v-if="recording.transcript && recording.transcript.length > 20"
+                @click="regenerateTitle"
+                :disabled="generatingTitle"
+                class="text-emerald-600 hover:text-emerald-700 p-1 rounded-lg hover:bg-emerald-50 transition"
+                title="Generate AI Title"
+              >
+                <svg v-if="generatingTitle" class="animate-spin w-5 h-5" fill="none" viewBox="0 0 24 24">
+                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                </svg>
+                <svg v-else class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                </svg>
+              </button>
+            </div>
             <p class="text-gray-500 mt-1 text-sm sm:text-base">{{ formatDate(recording.createdAt) }}</p>
           </div>
           <span 
@@ -597,6 +614,7 @@ const generatingMinutes = ref(false);
 const transcribing = ref(false);
 const transcriptExpanded = ref(false);
 const extractingActions = ref(false);
+const generatingTitle = ref(false);
 const activeAITab = ref('summary');
 const selectedTemplate = ref('professional');
 const generatingPDF = ref(false);
@@ -956,6 +974,19 @@ const extractActions = async () => {
     alert('Failed to extract action items.');
   } finally {
     extractingActions.value = false;
+  }
+};
+
+const regenerateTitle = async () => {
+  generatingTitle.value = true;
+  try {
+    const result = await recordingsApi.generateTitle(recording.value._id || recording.value.id);
+    recording.value.title = result.title;
+  } catch (error) {
+    console.error('Error generating title:', error);
+    alert('Failed to generate AI title.');
+  } finally {
+    generatingTitle.value = false;
   }
 };
 

@@ -173,4 +173,45 @@ Return ONLY the JSON array, no other text.`;
   }
 };
 
-export default { generateSummary, generateMeetingMinutes, extractActionItems };
+/**
+ * Generate a title from a transcript using Gemini
+ * @param {string} transcript - The full transcript text
+ * @returns {Promise<string>} - The generated title
+ */
+export const generateTitle = async (transcript) => {
+  if (!transcript || transcript.length < 20) {
+    return `Recording ${new Date().toLocaleDateString()}`;
+  }
+
+  const prompt = `You are an expert at creating concise, descriptive titles.
+Analyze the following transcript and generate a short, professional title (max 60 characters) that captures the main topic or purpose.
+
+Rules:
+- Keep it concise (3-8 words ideal)
+- Make it descriptive and specific to the content
+- Do NOT include dates or timestamps
+- Do NOT use generic titles like "Meeting" or "Discussion"
+- Do NOT use quotes around the title
+- Return ONLY the title, nothing else
+
+Transcript:
+"""
+${transcript.substring(0, 2000)}
+"""
+
+Title:`;
+
+  try {
+    console.log('Generating title with Gemini...');
+    const result = await getGeminiModel().generateContent(prompt);
+    const response = await result.response;
+    const title = response.text().trim().replace(/^["']|["']$/g, '');
+    console.log('Title generated:', title);
+    return title || `Recording ${new Date().toLocaleDateString()}`;
+  } catch (error) {
+    console.error('Gemini title error:', error);
+    return `Recording ${new Date().toLocaleDateString()}`;
+  }
+};
+
+export default { generateSummary, generateMeetingMinutes, extractActionItems, generateTitle };

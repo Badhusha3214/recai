@@ -216,5 +216,11 @@ export const recordingsApi = {
     return apiRequest(`/recordings/${id}/actions`, {
       method: 'POST'
     });
+  },
+
+  async generateTitle(id) {
+    return apiRequest(`/recordings/${id}/generate-title`, {
+      method: 'POST'
+    });
   }
 };
