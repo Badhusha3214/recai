@@ -157,21 +157,62 @@ async function handleLogin() {
   loading.value = false;
 }
 
+function loadGoogleScript(): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if ((window as any).google?.accounts?.id) { resolve(); return; }
+    const s = document.createElement('script');
+    s.src = 'https://accounts.google.com/gsi/client';
+    s.async = true;
+    s.onload = () => resolve();
+    s.onerror = () => reject(new Error('Failed to load Google Sign-In'));
+    document.head.appendChild(s);
+  });
+}
+
 async function handleGoogleLogin() {
-  if (!Capacitor.isNativePlatform()) {
-    error.value = 'Google Sign-In is only available on the mobile app';
-    return;
-  }
   googleLoading.value = true;
   error.value = '';
+
+  if (!Capacitor.isNativePlatform()) {
+    // Web browser: Google Identity Services (One Tap)
+    try {
+      await loadGoogleScript();
+    } catch {
+      error.value = 'Failed to load Google Sign-In';
+      googleLoading.value = false;
+      return;
+    }
+
+    (window as any).google.accounts.id.initialize({
+      client_id: import.meta.env.VITE_GOOGLE_CLIENT_ID,
+      use_fedcm_for_prompt: false, // fall back to classic popup when FedCM is blocked
+      callback: async (resp: { credential: string }) => {
+        const success = await auth.googleLogin(resp.credential);
+        googleLoading.value = false;
+        if (success) {
+          router.replace('/home');
+        } else {
+          error.value = auth.error || 'Google sign-in failed';
+        }
+      },
+    });
+
+    (window as any).google.accounts.id.prompt((n: any) => {
+      if (n.isNotDisplayed()) {
+        error.value = 'Google sign-in could not open. Enable third-party cookies or try Chrome.';
+        googleLoading.value = false;
+      } else if (n.isSkippedMoment() || n.isDismissedMoment()) {
+        googleLoading.value = false;
+      }
+    });
+    return; // loading is managed inside callback / prompt notification
+  }
+
+  // Native (Android / iOS): Capacitor GoogleAuth plugin
   try {
     const googleUser = await GoogleAuth.signIn();
     const idToken = googleUser?.authentication?.idToken;
-
-    if (!idToken) {
-      error.value = `No token: ${JSON.stringify(googleUser?.authentication)}`;
-      return;
-    }
+    if (!idToken) throw new Error('No ID token from Google');
 
     const success = await auth.googleLogin(idToken);
     if (success) {
@@ -180,11 +221,8 @@ async function handleGoogleLogin() {
       error.value = auth.error || 'Google sign-in failed';
     }
   } catch (err: any) {
-    console.error('Google sign-in error:', JSON.stringify(err), err);
-    if (err?.error === 'popup_closed_by_user' || err?.error === 'access_denied') {
-      // user cancelled, do nothing
-    } else {
-      error.value = `Error: ${err?.message || err?.error || JSON.stringify(err)}`;
+    if (err?.error !== 'popup_closed_by_user' && err?.error !== 'access_denied') {
+      error.value = err?.message || 'Google sign-in failed';
     }
   } finally {
     googleLoading.value = false;

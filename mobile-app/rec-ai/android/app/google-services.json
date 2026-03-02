@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "1004219063159",
+    "project_id": "recai-488814",
+    "storage_bucket": "recai-488814.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1004219063159:android:2c81a4ba4f6b6af7",
+        "android_client_info": {
+          "package_name": "rec.ai"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "1004219063159-bhlmuo4cebu9oqf32i6nn2grojmhphh5.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "rec.ai",
+            "certificate_hash": "2c81a4ba4f6b6af7db9ad7ede4514c987b417c02"
+          }
+        },
+        {
+          "client_id": "1004219063159-uhcjuruvg9fp6c0ti5rad22gi64am8k4.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": ""
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1004219063159-uhcjuruvg9fp6c0ti5rad22gi64am8k4.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

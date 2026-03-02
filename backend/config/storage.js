@@ -14,6 +14,9 @@ const getR2Client = () => {
         secretAccessKey: process.env.R2_SECRET_ACCESS_KEY,
       },
       forcePathStyle: true, // Required for R2 - use path-style URLs
+      // AWS SDK v3.x auto-injects CRC32 checksums that R2 doesn't accept
+      requestChecksumCalculation: 'WHEN_REQUIRED',
+      responseChecksumValidation: 'WHEN_REQUIRED',
     });
   }
   return r2Client;
@@ -30,9 +33,9 @@ export const configureBucketCors = async () => {
       {
         AllowedHeaders: ['*'],
         AllowedMethods: ['GET', 'PUT', 'POST', 'DELETE', 'HEAD'],
-        AllowedOrigins: ['http://localhost:5173', 'http://localhost:5174', 'http://localhost:3000'],
+        AllowedOrigins: ['*'], // Covers browser dev, Capacitor iOS/Android, and production
         ExposeHeaders: ['ETag'],
-        MaxAgeSeconds: 3600,
+        MaxAgeSeconds: 86400,
       },
     ],
   };

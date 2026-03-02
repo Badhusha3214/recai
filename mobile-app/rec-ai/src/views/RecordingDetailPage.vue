@@ -163,7 +163,7 @@
                       <ion-icon :icon="copyOutline"></ion-icon>
                     </button>
                     <button
-                      v-if="activeTab === 'transcript' && recording.transcript"
+                      v-if="activeTab === 'transcript' && recording.transcript && isTranscriptEnglish && !isTranscriptRepetitive"
                       class="action-btn"
                       @click="startEditTranscript"
                       title="Edit transcript"
@@ -204,13 +204,19 @@
 
               <!-- Transcript: editor or read-only -->
               <template v-if="activeTab === 'transcript'">
-                <textarea
-                  v-if="isEditingTranscript"
-                  v-model="editedTranscript"
-                  class="transcript-editor"
-                  placeholder="Edit transcript…"
-                ></textarea>
-                <div v-else class="tab-body formatted" v-html="renderMarkdown(recording.transcript!)"></div>
+                <template v-if="isTranscriptEnglish && !isTranscriptRepetitive">
+                  <textarea
+                    v-if="isEditingTranscript"
+                    v-model="editedTranscript"
+                    class="transcript-editor"
+                    placeholder="Edit transcript…"
+                  ></textarea>
+                  <div v-else class="tab-body formatted" v-html="renderMarkdown(recording.transcript!)"></div>
+                </template>
+                <div v-else class="non-english-notice">
+                  <ion-icon :icon="languageOutline"></ion-icon>
+                  <p>Viewing and editing Transcript is only available for English</p>
+                </div>
               </template>
 
               <div class="tab-body formatted" v-else-if="activeTab === 'summary'" v-html="renderMarkdown(recording.summary!)"></div>
@@ -290,7 +296,7 @@ import {
   textOutline, sparklesOutline, listOutline, checkmarkOutline, copyOutline,
   alertCircleOutline, shareOutline, trashOutline, calendarOutline, timeOutline,
   downloadOutline, createOutline, addOutline, pencilOutline, closeOutline, saveOutline,
-  checkmarkCircleOutline, personOutline
+  checkmarkCircleOutline, personOutline, languageOutline
 } from 'ionicons/icons';
 import { Capacitor, registerPlugin } from '@capacitor/core';
 import { Filesystem, Directory } from '@capacitor/filesystem';
@@ -409,6 +415,37 @@ const generatingPDF = ref(false);
 const logoBase64 = ref<string | null>(null);
 const showTemplateEditor = ref(false);
 const editingTemplateKey = ref<string | null>(null);
+
+const isTranscriptEnglish = computed(() => {
+  const text = recording.value?.transcript;
+  if (!text || text.trim().length === 0) return true;
+  const letters = text.match(/\p{L}/gu) || [];
+  if (letters.length === 0) return true;
+  const asciiLetters = letters.filter(c => /[a-zA-Z]/.test(c));
+  return asciiLetters.length / letters.length > 0.7;
+});
+
+const isTranscriptRepetitive = computed(() => {
+  const text = recording.value?.transcript;
+  if (!text || text.trim().length === 0) return false;
+  const words = text.toLowerCase().match(/\b\w+\b/g) || [];
+  if (words.length < 20) return false;
+  // Overall frequency check
+  const freq: Record<string, number> = {};
+  for (const w of words) freq[w] = (freq[w] || 0) + 1;
+  const maxFreq = Math.max(...Object.values(freq));
+  if (maxFreq / words.length > 0.2) return true;
+  // Consecutive repetition check — e.g. "okay okay okay okay..." 10+ times in a row
+  let consecutive = 1;
+  for (let i = 1; i < words.length; i++) {
+    if (words[i] === words[i - 1]) {
+      if (++consecutive >= 10) return true;
+    } else {
+      consecutive = 1;
+    }
+  }
+  return false;
+});
 
 const availableTabs = computed(() => {
   const tabs = [];
@@ -1323,6 +1360,30 @@ function applyInlineFormatting(text: string): string {
   color: var(--app-primary);
   border-color: var(--app-primary);
   background: var(--app-primary-ultra-light);
+}
+
+.non-english-notice {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 48px 24px;
+  text-align: center;
+  color: var(--app-text-muted);
+}
+
+.non-english-notice ion-icon {
+  font-size: 36px;
+  color: var(--app-primary);
+  opacity: 0.6;
+}
+
+.non-english-notice p {
+  font-size: 14px;
+  line-height: 1.5;
+  margin: 0;
+  max-width: 240px;
 }
 
 .transcript-editor {

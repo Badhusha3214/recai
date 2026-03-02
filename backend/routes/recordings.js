@@ -118,7 +118,8 @@ router.post('/', async (req, res) => {
     else if (audioData && process.env.R2_ACCESS_KEY_ID) {
       try {
         console.log('Uploading audio to R2...');
-        const base64Data = audioData.replace(/^data:audio\/[^;]+;base64,/, '');
+        // Strip data URL prefix — handles "audio/webm;codecs=opus;base64," etc.
+        const base64Data = audioData.replace(/^data:[^,]+,/, '');
         audioBuffer = Buffer.from(base64Data, 'base64');
         console.log('Audio buffer size:', audioBuffer.length);
         const uploaded = await uploadAudio(audioBuffer, req.user.id, mimeType || 'audio/webm');

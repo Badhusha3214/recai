@@ -129,12 +129,60 @@ class ApiService {
     return data;
   }
 
-  async uploadToR2(uploadUrl: string, blob: Blob, mimeType: string): Promise<void> {
-    await fetch(uploadUrl, {
-      method: 'PUT',
-      body: blob,
-      headers: { 'Content-Type': mimeType },
-    });
+  async uploadToR2(
+    uploadUrl: string,
+    blob: Blob,
+    mimeType: string,
+    onProgress?: (percent: number) => void,
+  ): Promise<void> {
+    const MAX_RETRIES = 3;
+    const TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+
+    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+      try {
+        await new Promise<void>((resolve, reject) => {
+          const xhr = new XMLHttpRequest();
+          const timer = setTimeout(() => {
+            xhr.abort();
+            reject(new Error('Upload timed out'));
+          }, TIMEOUT_MS);
+
+          xhr.upload.onprogress = (e) => {
+            if (e.lengthComputable && onProgress) {
+              onProgress(Math.round((e.loaded / e.total) * 100));
+            }
+          };
+
+          xhr.onload = () => {
+            clearTimeout(timer);
+            if (xhr.status >= 200 && xhr.status < 300) {
+              resolve();
+            } else {
+              reject(new Error(`Upload failed with status ${xhr.status}`));
+            }
+          };
+
+          xhr.onerror = () => {
+            clearTimeout(timer);
+            reject(new Error('Network error during upload'));
+          };
+
+          xhr.onabort = () => {
+            clearTimeout(timer);
+            reject(new Error('Upload timed out'));
+          };
+
+          xhr.open('PUT', uploadUrl);
+          xhr.setRequestHeader('Content-Type', mimeType);
+          xhr.send(blob);
+        });
+        return; // success — exit retry loop
+      } catch (err) {
+        if (attempt === MAX_RETRIES) throw err;
+        // Exponential backoff before retry
+        await new Promise((r) => setTimeout(r, attempt * 2000));
+      }
+    }
   }
 
   async createRecording(recordingData: {
@@ -161,7 +209,7 @@ class ApiService {
   }
 
   async transcribeRecording(id: string): Promise<Recording> {
-    const { data } = await this.api.post<{ recording: Recording }>(`/recordings/${id}/transcribe`, null, {
+    const { data } = await this.api.post<{ recording: Recording }>(`/recordings/${id}/transcribe`, {}, {
       timeout: 300000, // 5 minutes — server-side timeout matches
     });
     return data.recording;

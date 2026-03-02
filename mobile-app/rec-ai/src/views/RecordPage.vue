@@ -71,7 +71,10 @@
             </div>
             <h3>{{ processingTitle }}</h3>
             <p>{{ processingStatus }}</p>
-            <div class="processing-dots">
+            <div v-if="uploadProgress > 0 && uploadProgress < 100" class="upload-progress-bar">
+              <div class="upload-progress-fill" :style="{ width: uploadProgress + '%' }"></div>
+            </div>
+            <div class="processing-dots" v-else>
               <span></span><span></span><span></span>
             </div>
           </div>
@@ -164,6 +167,7 @@ const error = ref('');
 const recordingTime = ref(0);
 const processingTitle = ref('Processing');
 const processingStatus = ref('');
+const uploadProgress = ref(0);
 
 // Audio
 const mediaRecorder = ref<MediaRecorder | null>(null);
@@ -504,29 +508,48 @@ async function saveRecording() {
   try {
     let recording;
 
-    // Try presigned URL approach: upload directly to R2 (no backend proxy, no timeout)
-    try {
-      processingStatus.value = 'Uploading audio...';
-      const { uploadUrl, key } = await api.getUploadUrl(mimeType);
-      await api.uploadToR2(uploadUrl, audioBlob.value, mimeType);
-
-      processingStatus.value = 'Saving...';
-      recording = await recordingsStore.createRecording({
-        audioKey: key,
-        duration,
-        mimeType,
-        autoTranscribe: false, // transcription triggered from detail page
-      });
-    } catch {
-      // Fallback: send base64 through backend (works when R2 presigned URL not available)
+    if (Capacitor.isNativePlatform()) {
+      // On native (Android/iOS), CapacitorHttp intercepts XHR but cannot serialize
+      // binary Blob bodies — it sends 2 bytes of empty JSON instead of audio data.
+      // Send base64 through the backend which then uploads to R2 server-side.
       processingStatus.value = 'Processing audio...';
       const base64 = await blobToBase64(audioBlob.value);
       recording = await recordingsStore.createRecording({
         audioData: base64,
         duration,
         mimeType,
-        autoTranscribe: true,
+        autoTranscribe: false,
       });
+    } else {
+      // Web: upload blob directly to R2 via presigned URL (standard XHR, no CapacitorHttp)
+      try {
+        uploadProgress.value = 0;
+        processingStatus.value = 'Uploading audio... 0%';
+        const { uploadUrl, key } = await api.getUploadUrl(mimeType);
+        await api.uploadToR2(uploadUrl, audioBlob.value, mimeType, (pct) => {
+          uploadProgress.value = pct;
+          processingStatus.value = `Uploading audio... ${pct}%`;
+        });
+
+        processingStatus.value = 'Saving...';
+        recording = await recordingsStore.createRecording({
+          audioKey: key,
+          duration,
+          mimeType,
+          autoTranscribe: false,
+        });
+      } catch (uploadErr: any) {
+        // Web fallback: send base64 through backend
+        console.warn('R2 upload failed, using base64 fallback:', uploadErr?.message);
+        processingStatus.value = 'Processing audio...';
+        const base64 = await blobToBase64(audioBlob.value);
+        recording = await recordingsStore.createRecording({
+          audioData: base64,
+          duration,
+          mimeType,
+          autoTranscribe: true,
+        });
+      }
     }
 
     if (recording) {
@@ -940,6 +963,20 @@ function stopVisualization() {
 .processing-spinner ion-spinner { width: 48px; height: 48px; }
 .processing-overlay h3 { font-size: 22px; font-weight: 700; color: var(--app-text); margin: 0; }
 .processing-overlay p { font-size: 15px; color: var(--app-text-secondary); margin: 0; }
+
+.upload-progress-bar {
+  width: 220px;
+  height: 6px;
+  background: var(--app-border, #e0e0e0);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.upload-progress-fill {
+  height: 100%;
+  background: var(--ion-color-primary, #6c63ff);
+  border-radius: 3px;
+  transition: width 0.2s ease;
+}
 
 .processing-dots {
   display: flex;
