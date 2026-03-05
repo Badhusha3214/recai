@@ -5,11 +5,7 @@ const config: CapacitorConfig = {
   appName: 'Echobit',
   webDir: 'www',
   server: {
-    cleartext: true,
     allowNavigation: ['*'],
-    // Uncomment below for live reload debugging (run 'npm run dev' first)
-    // url: 'http://192.168.1.6:5173',
-    // cleartext: true
   },
   plugins: {
     GoogleAuth: {

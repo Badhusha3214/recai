@@ -8,12 +8,24 @@ import DashboardHome from '../views/DashboardHome.vue'
 import NewRecording from '../views/NewRecording.vue'
 import RecordingsList from '../views/RecordingsList.vue'
 import RecordingDetail from '../views/RecordingDetail.vue'
+import DeleteAccount from '../views/DeleteAccount.vue'
+import PrivacyPolicy from '../views/PrivacyPolicy.vue'
 
 const routes = [
   {
     path: '/',
     name: 'Welcome',
     component: Welcome
+  },
+  {
+    path: '/delete-account',
+    name: 'DeleteAccount',
+    component: DeleteAccount,
+  },
+  {
+    path: '/privacy-policy',
+    name: 'PrivacyPolicy',
+    component: PrivacyPolicy,
   },
   {
     path: '/login',

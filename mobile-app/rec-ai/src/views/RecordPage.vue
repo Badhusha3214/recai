@@ -1,6 +1,6 @@
 <template>
   <ion-page>
-    <ion-content :fullscreen="true" :scroll-y="false">
+    <ion-content :fullscreen="true">
       <div class="record-container">
         <!-- Header -->
         <header class="record-header">
@@ -95,6 +95,7 @@
               <div class="pulse-ring pulse-ring-2" v-if="isRecording"></div>
             </div>
             <p class="hint">{{ isRecording ? 'Tap to stop' : 'Tap to record' }}</p>
+            <p class="lang-notice" v-if="!isRecording">English is the only supported language in this version.<br> We appreciate your patience.</p>
 
             <!-- Upload Option -->
             <div class="upload-divider" v-if="!isRecording">
@@ -696,7 +697,7 @@ function stopVisualization() {
 .record-container {
   display: flex;
   flex-direction: column;
-  height: 100%;
+  min-height: 100%;
   background: var(--app-bg);
   padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom);
 }
@@ -772,9 +773,9 @@ function stopVisualization() {
 /* Timer Ring */
 .timer-ring {
   position: relative;
-  width: 220px;
-  height: 220px;
-  margin-bottom: 32px;
+  width: min(220px, 55vw);
+  height: min(220px, 55vw);
+  margin-bottom: 24px;
 }
 
 .timer-svg {
@@ -1064,6 +1065,22 @@ function stopVisualization() {
   font-weight: 500;
 }
 
+.lang-notice {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  border: 1px solid var(--app-border);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+  font-size: 11px;
+  color: var(--app-text-muted);
+  margin: 6px 18px 0;
+  opacity: 0.6;
+  letter-spacing: 0.2px;
+}
+
 /* Upload */
 .upload-divider {
   display: flex;
@@ -1204,5 +1221,28 @@ function stopVisualization() {
 @keyframes slide-up-fade {
   from { opacity: 0; transform: translateY(20px); }
   to { opacity: 1; transform: translateY(0); }
+}
+
+/* Compact layout for short screens */
+@media (max-height: 680px) {
+  .timer-ring {
+    width: min(160px, 45vw);
+    height: min(160px, 45vw);
+    margin-bottom: 12px;
+  }
+  .record-main {
+    padding: 12px 24px;
+  }
+  .waveform-container {
+    height: 40px;
+    margin-bottom: 8px;
+  }
+  .record-footer {
+    padding: 12px 24px;
+    padding-bottom: calc(12px + env(safe-area-inset-bottom));
+  }
+  .controls {
+    gap: 10px;
+  }
 }
 </style>

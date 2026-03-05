@@ -125,11 +125,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed } from 'vue';
 import { useRouter } from 'vue-router';
 import {
   IonPage, IonContent, IonIcon, IonFab, IonFabButton,
-  IonRefresher, IonRefresherContent, IonAlert, toastController
+  IonRefresher, IonRefresherContent, IonAlert, toastController, onIonViewWillEnter
 } from '@ionic/vue';
 import {
   chevronBackOutline, searchOutline, closeCircleOutline, micOutline,
@@ -194,7 +194,7 @@ const deleteButtons = [
   }
 ];
 
-onMounted(() => {
+onIonViewWillEnter(() => {
   recordingsStore.fetchRecordings();
 });
 

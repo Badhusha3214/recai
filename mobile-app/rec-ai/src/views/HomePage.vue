@@ -163,9 +163,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed } from 'vue';
 import { useRouter } from 'vue-router';
-import { IonPage, IonContent, IonIcon, IonRefresher, IonRefresherContent } from '@ionic/vue';
+import { IonPage, IonContent, IonIcon, IonRefresher, IonRefresherContent, onIonViewWillEnter } from '@ionic/vue';
 import {
   mic, micOutline, arrowForwardOutline, layersOutline, checkmarkDoneOutline,
   timeOutline, documentTextOutline, checkmarkCircleOutline, ellipseOutline,
@@ -204,7 +204,7 @@ const stats = computed(() => {
   return { total, transcribed, duration };
 });
 
-onMounted(() => {
+onIonViewWillEnter(() => {
   recordingsStore.fetchRecordings();
 });
 

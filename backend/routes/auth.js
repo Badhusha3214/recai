@@ -300,4 +300,32 @@ router.post('/google', async (req, res) => {
   }
 });
 
+// Delete account
+router.post('/delete-account', async (req, res) => {
+  try {
+    const { email, password } = req.body;
+    if (!email || !password) {
+      return res.status(400).json({ error: 'Email and password are required' });
+    }
+
+    const user = await User.findOne({ email }).select('+password');
+    if (!user) return res.status(404).json({ error: 'No account found with this email' });
+
+    const isMatch = await user.comparePassword(password);
+    if (!isMatch) return res.status(401).json({ error: 'Incorrect password' });
+
+    // Delete user's recordings
+    const Recording = (await import('../models/Recording.js')).default;
+    await Recording.deleteMany({ user: user._id });
+
+    // Delete user
+    await User.findByIdAndDelete(user._id);
+
+    res.json({ message: 'Account and all associated data deleted successfully' });
+  } catch (error) {
+    console.error('Delete account error:', error);
+    res.status(500).json({ error: 'Failed to delete account' });
+  }
+});
+
 export default router;
