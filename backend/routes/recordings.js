@@ -6,6 +6,89 @@ import { generateSummary, generateMeetingMinutes, extractActionItems, generateTi
 
 const router = express.Router();
 
+// ─── Chunked-upload helpers ─────────────────────────────────────────────────
+// Stores in-flight chunks for native clients that can't send one large request.
+const chunkStore = new Map(); // uploadId → { chunks[], totalChunks, userId, createdAt }
+
+// Sweep stale uploads every 10 minutes (discard anything older than 30 min)
+setInterval(() => {
+  const cutoff = Date.now() - 30 * 60 * 1000;
+  for (const [id, entry] of chunkStore.entries()) {
+    if (entry.createdAt < cutoff) chunkStore.delete(id);
+  }
+}, 10 * 60 * 1000);
+
+// POST /upload-chunk  — receive one base64 slice from the mobile client
+router.post('/upload-chunk', async (req, res) => {
+  try {
+    const { uploadId, chunkIndex, totalChunks, chunk } = req.body;
+    if (!uploadId || chunkIndex === undefined || !totalChunks || chunk === undefined) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+
+    let entry = chunkStore.get(uploadId);
+    if (!entry) {
+      entry = { chunks: new Array(totalChunks).fill(null), totalChunks, userId: req.user.id, createdAt: Date.now() };
+      chunkStore.set(uploadId, entry);
+    }
+
+    if (entry.userId !== req.user.id) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+
+    entry.chunks[chunkIndex] = chunk;
+    res.json({ ok: true, received: chunkIndex });
+  } catch (error) {
+    console.error('Chunk upload error:', error);
+    res.status(500).json({ error: 'Failed to store chunk' });
+  }
+});
+
+// POST /finalize-upload — assemble chunks, push to R2, create DB record
+router.post('/finalize-upload', async (req, res) => {
+  try {
+    const { uploadId, duration, mimeType, title } = req.body;
+
+    const entry = chunkStore.get(uploadId);
+    if (!entry) return res.status(404).json({ error: 'Upload not found or expired' });
+    if (entry.userId !== req.user.id) return res.status(403).json({ error: 'Forbidden' });
+
+    const missing = entry.chunks.findIndex(c => c === null);
+    if (missing !== -1) return res.status(400).json({ error: `Missing chunk ${missing}` });
+
+    chunkStore.delete(uploadId); // free memory immediately
+
+    const base64Data = entry.chunks.join('').replace(/^data:[^,]+,/, '');
+    const audioBuffer = Buffer.from(base64Data, 'base64');
+    console.log('[finalize-upload] Assembled buffer size:', audioBuffer.length);
+
+    let audioInfo = { audioKey: null, audioUrl: null, audioSize: 0 };
+    if (process.env.R2_ACCESS_KEY_ID) {
+      const uploaded = await uploadAudio(audioBuffer, req.user.id, mimeType || 'audio/wav');
+      audioInfo = { audioKey: uploaded.key, audioUrl: uploaded.url, audioSize: uploaded.size };
+      console.log('[finalize-upload] R2 upload success:', audioInfo.audioKey);
+    }
+
+    const finalTitle = title || `Recording ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}`;
+
+    const recording = await Recording.create({
+      user: req.user.id,
+      title: finalTitle,
+      ...audioInfo,
+      audioMimeType: mimeType || 'audio/wav',
+      duration: duration || 0,
+      transcript: '',
+      status: 'pending',
+    });
+
+    res.status(201).json({ recording: recording.toJSON() });
+  } catch (error) {
+    console.error('[finalize-upload] Error:', error);
+    res.status(500).json({ error: 'Failed to finalize upload' });
+  }
+});
+// ────────────────────────────────────────────────────────────────────────────
+
 // Get all recordings for user
 router.get('/', async (req, res) => {
   try {

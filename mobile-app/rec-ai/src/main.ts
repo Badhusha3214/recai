@@ -54,8 +54,9 @@ router.isReady().then(async () => {
   }
 
   if (Capacitor.isNativePlatform()) {
-    // Prevent the status bar from overlapping page content
-    await StatusBar.setOverlaysWebView({ overlay: false });
+    // Let the web view extend under the status bar so that
+    // env(safe-area-inset-top) is correctly populated per device.
+    await StatusBar.setOverlaysWebView({ overlay: true });
 
     // Match status bar style to current theme
     const isDark = document.body.classList.contains('dark') ||

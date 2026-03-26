@@ -84,7 +84,7 @@
           To delete your account, visit our
           <a href="/delete-account" class="text-blue-400 underline hover:text-blue-300">account deletion page</a>
           or contact us at
-          <a href="mailto:support@echobit.app" class="text-blue-400 underline hover:text-blue-300">support@echobit.app</a>.
+          <a href="mailto:no.reply.echobit@gmail.com" class="text-blue-400 underline hover:text-blue-300">no.reply.echobit@gmail.com</a>.
           Deleting your account permanently removes all your recordings, transcriptions, and personal data.
         </p>
       </section>
@@ -111,7 +111,7 @@
         <h2 class="text-white text-lg font-semibold mb-3">10. Contact Us</h2>
         <p class="text-sm leading-relaxed">
           If you have any questions or concerns about this Privacy Policy, please contact us at:<br />
-          <a href="mailto:support@echobit.app" class="text-blue-400 underline hover:text-blue-300">support@echobit.app</a>
+          <a href="mailto:no.reply.echobit@gmail.com" class="text-blue-400 underline hover:text-blue-300">no.reply.echobit@gmail.com</a>
         </p>
       </section>
 

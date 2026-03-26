@@ -224,3 +224,28 @@ export const recordingsApi = {
     });
   }
 };
+
+// Admin API
+export const adminApi = {
+  async getStats() {
+    return apiRequest('/admin/stats');
+  },
+  async getUsers(page = 1, search = '') {
+    return apiRequest(`/admin/users?page=${page}&search=${encodeURIComponent(search)}`);
+  },
+  async getUser(id) {
+    return apiRequest(`/admin/users/${id}`);
+  },
+  async deleteUser(id) {
+    return apiRequest(`/admin/users/${id}`, { method: 'DELETE' });
+  },
+  async getRecordings(page = 1, search = '') {
+    return apiRequest(`/admin/recordings?page=${page}&search=${encodeURIComponent(search)}`);
+  },
+  async getActivity(limit = 30) {
+    return apiRequest(`/admin/activity?limit=${limit}`);
+  },
+  async getAnalytics(days = 30) {
+    return apiRequest(`/admin/analytics?days=${days}`);
+  },
+};

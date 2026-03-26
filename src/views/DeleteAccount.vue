@@ -73,7 +73,7 @@
 
         <p class="text-center text-gray-600 text-xs mt-6">
           If you signed in with Google, please contact
-          <a href="mailto:support@echobit.app" class="text-gray-400 underline">support@echobit.app</a>
+          <a href="mailto:no.reply.echobit@gmail.com" class="text-gray-400 underline">no.reply.echobit@gmail.com</a>
           to delete your account.
         </p>
       </div>

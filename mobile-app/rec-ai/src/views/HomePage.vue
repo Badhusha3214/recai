@@ -29,8 +29,8 @@
               <div class="hero-icon">
                 <ion-icon :icon="mic"></ion-icon>
               </div>
-              <div class="hero-pulse"></div>
-              <div class="hero-pulse hero-pulse-2"></div>
+              <!-- <div class="hero-pulse"></div> -->
+              <!-- <div class="hero-pulse hero-pulse-2"></div> -->
             </div>
             <div class="hero-text">
               <h2>New Recording</h2>
@@ -137,6 +137,60 @@
 
     </ion-content>
 
+    <!-- Privacy Policy Consent Modal -->
+    <transition name="pp-slide">
+      <div v-if="showPrivacyModal" class="pp-backdrop" @click.self="() => {}">
+        <div class="pp-sheet">
+          <div class="pp-handle"></div>
+
+          <div class="pp-header">
+            <div class="pp-icon">
+              <ion-icon :icon="shieldCheckmarkOutline"></ion-icon>
+            </div>
+            <div>
+              <h2 class="pp-title">Privacy &amp; Terms</h2>
+              <p class="pp-subtitle">Please review before continuing</p>
+            </div>
+          </div>
+
+          <div class="pp-body">
+            <p class="pp-intro">
+              Echobit collects your audio recordings and transcriptions to deliver its core features.
+              Your data is stored securely and never sold to third parties.
+            </p>
+
+            <ul class="pp-list">
+              <li>
+                <ion-icon :icon="micOutline"></ion-icon>
+                <span><strong>Audio &amp; transcription</strong> — stored on Cloudflare R2 and processed by OpenAI Whisper for speech-to-text.</span>
+              </li>
+              <li>
+                <ion-icon :icon="sparklesOutline"></ion-icon>
+                <span><strong>AI summaries</strong> — transcripts are sent to Google Gemini to generate insights.</span>
+              </li>
+              <li>
+                <ion-icon :icon="personOutline"></ion-icon>
+                <span><strong>Account data</strong> — name &amp; email stored in MongoDB Atlas.</span>
+              </li>
+              <li>
+                <ion-icon :icon="trashOutline"></ion-icon>
+                <span><strong>Your rights</strong> — delete your account and all data at any time from Profile settings.</span>
+              </li>
+            </ul>
+
+            <p class="pp-contact">
+              Questions? <a href="mailto:no.reply.echobit@gmail.com">no.reply.echobit@gmail.com</a>
+            </p>
+          </div>
+
+          <div class="pp-actions">
+            <button class="pp-btn-decline" @click="declinePrivacy">Decline</button>
+            <button class="pp-btn-accept" @click="acceptPrivacy">I Agree &amp; Continue</button>
+          </div>
+        </div>
+      </div>
+    </transition>
+
     <!-- Bottom Navigation sits at ion-page level so it is never inside the scroll container -->
     <div class="bottom-nav">
       <button class="nav-item active" @click="router.push('/home')">
@@ -169,10 +223,12 @@ import { IonPage, IonContent, IonIcon, IonRefresher, IonRefresherContent, onIonV
 import {
   mic, micOutline, arrowForwardOutline, layersOutline, checkmarkDoneOutline,
   timeOutline, documentTextOutline, checkmarkCircleOutline, ellipseOutline,
-  addOutline, homeOutline, listOutline, searchOutline, personOutline
+  addOutline, homeOutline, listOutline, searchOutline, personOutline,
+  shieldCheckmarkOutline, sparklesOutline, trashOutline
 } from 'ionicons/icons';
 import { useAuthStore } from '@/stores/auth';
 import { useRecordingsStore } from '@/stores/recordings';
+import { api } from '@/services/api';
 
 const router = useRouter();
 const auth = useAuthStore();
@@ -180,6 +236,31 @@ const recordingsStore = useRecordingsStore();
 
 const loading = computed(() => recordingsStore.loading);
 const userName = computed(() => auth.user?.name?.split(' ')[0] || 'User');
+
+// ── Privacy Policy consent ──────────────────────────────────────────────────
+const PRIVACY_KEY = 'pp_accepted_v1';
+const showPrivacyModal = ref(false);
+
+async function checkPrivacyConsent() {
+  const { Preferences } = await import('@capacitor/preferences');
+  const { value } = await Preferences.get({ key: PRIVACY_KEY });
+  if (!value) showPrivacyModal.value = true;
+}
+
+async function acceptPrivacy() {
+  const { Preferences } = await import('@capacitor/preferences');
+  await Preferences.set({ key: PRIVACY_KEY, value: 'true' });
+  showPrivacyModal.value = false;
+  // Save consent to backend (fire-and-forget — local preference already secured)
+  api.acceptPrivacy().catch(() => {});
+}
+
+async function declinePrivacy() {
+  showPrivacyModal.value = false;
+  await auth.logout();
+  router.replace('/login');
+}
+// ───────────────────────────────────────────────────────────────────────────
 
 const userInitials = computed(() => {
   const name = auth.user?.name || 'U';
@@ -206,6 +287,7 @@ const stats = computed(() => {
 
 onIonViewWillEnter(() => {
   recordingsStore.fetchRecordings();
+  checkPrivacyConsent();
 });
 
 async function handleRefresh(event: CustomEvent) {
@@ -248,6 +330,175 @@ function getStatusLabel(status: string) {
   return 'New';
 }
 </script>
+
+<!-- Privacy modal styles are unscoped so the backdrop covers the full viewport -->
+<style>
+.pp-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: flex-end;
+}
+
+.pp-sheet {
+  width: 100%;
+  background: var(--app-surface, #1e1e2e);
+  border-radius: 24px 24px 0 0;
+  padding: 12px 24px calc(32px + env(safe-area-inset-bottom));
+  box-shadow: 0 -8px 40px rgba(0,0,0,0.4);
+  max-height: 88vh;
+  overflow-y: auto;
+}
+
+.pp-handle {
+  width: 40px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--app-border, #333);
+  margin: 0 auto 20px;
+}
+
+.pp-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 18px;
+}
+
+.pp-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  background: var(--app-primary-ultra-light, rgba(108,99,255,0.12));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.pp-icon ion-icon {
+  font-size: 24px;
+  color: var(--app-primary, #6c63ff);
+}
+
+.pp-title {
+  font-size: 20px;
+  font-weight: 800;
+  color: var(--app-text, #fff);
+  margin: 0 0 2px;
+}
+
+.pp-subtitle {
+  font-size: 13px;
+  color: var(--app-text-muted, #888);
+  margin: 0;
+}
+
+.pp-intro {
+  font-size: 14px;
+  color: var(--app-text-secondary, #aaa);
+  line-height: 1.6;
+  margin: 0 0 16px;
+}
+
+.pp-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.pp-list li {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--app-text-secondary, #aaa);
+  line-height: 1.5;
+}
+
+.pp-list li ion-icon {
+  font-size: 18px;
+  color: var(--app-primary, #6c63ff);
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.pp-list li strong {
+  color: var(--app-text, #fff);
+}
+
+.pp-contact {
+  font-size: 12px;
+  color: var(--app-text-muted, #888);
+  text-align: center;
+  margin: 0 0 20px;
+}
+
+.pp-contact a {
+  color: var(--app-primary, #6c63ff);
+  text-decoration: none;
+}
+
+.pp-actions {
+  display: flex;
+  gap: 12px;
+}
+
+.pp-btn-decline {
+  flex: 1;
+  padding: 14px;
+  border-radius: 14px;
+  border: 1.5px solid var(--app-border, #333);
+  background: transparent;
+  color: var(--app-text-muted, #888);
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.pp-btn-decline:active { opacity: 0.7; }
+
+.pp-btn-accept {
+  flex: 2;
+  padding: 14px;
+  border-radius: 14px;
+  border: none;
+  background: var(--app-gradient, linear-gradient(135deg,#6c63ff,#8b5cf6));
+  color: white;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 4px 16px rgba(108,99,255,0.35);
+  transition: opacity 0.15s;
+}
+
+.pp-btn-accept:active { opacity: 0.85; }
+
+/* Slide-up transition */
+.pp-slide-enter-active,
+.pp-slide-leave-active {
+  transition: opacity 0.25s ease;
+}
+.pp-slide-enter-active .pp-sheet,
+.pp-slide-leave-active .pp-sheet {
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.pp-slide-enter-from .pp-sheet,
+.pp-slide-leave-to .pp-sheet {
+  transform: translateY(100%);
+}
+.pp-slide-enter-from,
+.pp-slide-leave-to {
+  opacity: 0;
+}
+</style>
 
 <style scoped>
 .home-page {

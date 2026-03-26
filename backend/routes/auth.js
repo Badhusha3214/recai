@@ -340,4 +340,18 @@ router.post('/delete-account', async (req, res) => {
   }
 });
 
+// Accept privacy policy — saves consent to DB
+router.post('/accept-privacy', authenticateToken, async (req, res) => {
+  try {
+    await User.findByIdAndUpdate(req.user.id, {
+      privacyAccepted: true,
+      privacyAcceptedAt: new Date(),
+    });
+    res.json({ ok: true });
+  } catch (error) {
+    console.error('Accept privacy error:', error);
+    res.status(500).json({ error: 'Failed to save consent' });
+  }
+});
+
 export default router;

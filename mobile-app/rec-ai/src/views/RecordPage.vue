@@ -8,7 +8,7 @@
             <ion-icon :icon="closeOutline"></ion-icon>
           </button>
           <div class="header-center">
-            <div class="header-dot" :class="{ active: isRecording }"></div>
+            <div class="header-dot" :class="{ active: isRecording && !isPaused, paused: isRecording && isPaused }"></div>
             <span class="header-title">{{ headerTitle }}</span>
           </div>
           <div class="header-btn-spacer"></div>
@@ -84,17 +84,28 @@
         <footer class="record-footer" v-if="!isProcessing">
           <!-- Record Button -->
           <div class="controls" v-if="!showPreview">
-            <div class="record-btn-wrap">
-              <button class="record-btn" :class="{ recording: isRecording }" @click="toggleRecording">
+            <div class="record-btn-wrap" v-if="!isRecording">
+              <button class="record-btn" @click="() => startRecording()">
                 <div class="btn-inner">
-                  <div v-if="isRecording" class="stop-icon"></div>
-                  <ion-icon v-else :icon="mic"></ion-icon>
+                  <ion-icon :icon="mic"></ion-icon>
                 </div>
               </button>
-              <div class="pulse-ring" v-if="isRecording"></div>
-              <div class="pulse-ring pulse-ring-2" v-if="isRecording"></div>
             </div>
-            <p class="hint">{{ isRecording ? 'Tap to stop' : 'Tap to record' }}</p>
+            <div class="recording-row" v-else>
+              <button class="pause-btn" @click="togglePause">
+                <ion-icon :icon="isPaused ? playOutline : pauseOutline"></ion-icon>
+              </button>
+              <div class="record-btn-wrap">
+                <button class="record-btn recording" @click="stopRecording">
+                  <div class="btn-inner">
+                    <div class="stop-icon"></div>
+                  </div>
+                </button>
+                <div class="pulse-ring" v-if="!isPaused"></div>
+                <div class="pulse-ring pulse-ring-2" v-if="!isPaused"></div>
+              </div>
+            </div>
+            <p class="hint">{{ !isRecording ? 'Tap to record' : isPaused ? 'Paused' : 'Recording...' }}</p>
             <p class="lang-notice" v-if="!isRecording">English is the only supported language in this version.<br> We appreciate your patience.</p>
 
             <!-- Upload Option -->
@@ -151,17 +162,35 @@ import { ref, computed, onUnmounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { IonPage, IonContent, IonIcon, IonSpinner, alertController } from '@ionic/vue';
 import { closeOutline, mic, playOutline, pauseOutline, trashOutline, checkmarkOutline, alertCircleOutline, cloudUploadOutline } from 'ionicons/icons';
-import { Capacitor } from '@capacitor/core';
+import { Capacitor, registerPlugin } from '@capacitor/core';
 import type { PluginListenerHandle } from '@capacitor/core';
 import { CapacitorVoiceRecorder } from '@lgicc/capacitor-voice-recorder';
 import { useRecordingsStore } from '@/stores/recordings';
 import { api } from '@/services/api';
+
+// ── Foreground-service bridge (Android only) ────────────────────────────────
+// Keeps the process alive + CPU awake so recording continues in the background
+// (screen off, app minimised). No-op on web / future iOS builds.
+interface RecordingServicePlugin { start(): Promise<void>; stop(): Promise<void>; }
+const RecordingService = registerPlugin<RecordingServicePlugin>('RecordingService');
+
+async function startBgService() {
+  if (Capacitor.isNativePlatform()) {
+    try { await RecordingService.start(); } catch { /* not critical */ }
+  }
+}
+async function stopBgService() {
+  if (Capacitor.isNativePlatform()) {
+    try { await RecordingService.stop(); } catch { /* not critical */ }
+  }
+}
 
 const router = useRouter();
 const recordingsStore = useRecordingsStore();
 
 // State
 const isRecording = ref(false);
+const isPaused = ref(false);
 const isProcessing = ref(false);
 const showPreview = ref(false);
 const error = ref('');
@@ -215,14 +244,14 @@ function releaseWakeLock() {
 const MAX_RECORDING_TIME = 600; // 10 minutes
 
 const headerTitle = computed(() => {
-  if (isRecording.value) return 'Recording';
+  if (isRecording.value) return isPaused.value ? 'Paused' : 'Recording';
   if (isProcessing.value) return 'Processing';
   if (showPreview.value) return 'Preview';
   return 'New Recording';
 });
 
 const statusLabel = computed(() => {
-  if (isRecording.value) return 'Recording in progress';
+  if (isRecording.value) return isPaused.value ? 'Recording paused' : 'Recording in progress';
   if (isProcessing.value) return processingStatus.value;
   if (showPreview.value) return uploadedFileDuration.value ? 'Review your audio' : 'Review your recording';
   return 'Ready to record';
@@ -260,6 +289,8 @@ function showPermissionAlert(): Promise<boolean> {
 function cleanup() {
   stopTimer();
   stopVisualization();
+  stopBgService();
+  releaseWakeLock();
   voiceRecorderListener.value?.remove();
   voiceRecorderListener.value = null;
   if (Capacitor.isNativePlatform() && isRecording.value) {
@@ -339,6 +370,7 @@ async function startRecording(retryCount = 0) {
     isRecording.value = true;
     startTimer();
     acquireWakeLock();
+    await startBgService();
 
     voiceRecorderListener.value = await CapacitorVoiceRecorder.addListener(
       'frequencyData',
@@ -409,6 +441,7 @@ async function startRecording(retryCount = 0) {
     isRecording.value = true;
     startTimer();
     startVisualization();
+    await startBgService();
   } catch (err: any) {
     const errName = err?.name;
     if (errName === 'NotAllowedError' || errName === 'PermissionDeniedError') {
@@ -426,8 +459,54 @@ async function startRecording(retryCount = 0) {
   }
 }
 
+async function togglePause() {
+  if (!isRecording.value) return;
+  isPaused.value ? await resumeRecording() : await pauseRecording();
+}
+
+async function pauseRecording() {
+  stopTimer();
+  stopVisualization();
+  isPaused.value = true;
+
+  if (Capacitor.isNativePlatform()) {
+    try {
+      await (CapacitorVoiceRecorder as any).pauseRecording();
+    } catch {
+      // Plugin may not support pause; timer is paused, audio continues recording
+    }
+    return;
+  }
+
+  // Web
+  if (mediaRecorder.value?.state === 'recording') {
+    mediaRecorder.value.pause();
+  }
+}
+
+async function resumeRecording() {
+  isPaused.value = false;
+  startTimer();
+
+  if (Capacitor.isNativePlatform()) {
+    try {
+      await (CapacitorVoiceRecorder as any).resumeRecording();
+    } catch {
+      // Plugin may not support resume; just restart timer
+    }
+    return;
+  }
+
+  // Web
+  if (mediaRecorder.value?.state === 'paused') {
+    mediaRecorder.value.resume();
+  }
+  startVisualization();
+}
+
 async function stopRecording() {
   releaseWakeLock();
+  isPaused.value = false;
   if (Capacitor.isNativePlatform() && isRecording.value) {
     stopTimer();
     stopVisualization();
@@ -436,6 +515,7 @@ async function stopRecording() {
     voiceRecorderListener.value = null;
     try {
       const result = await CapacitorVoiceRecorder.stopRecording();
+      await stopBgService(); // stop AFTER we have the audio data
       const base64: string = (result as any).base64 ?? (result as any).recordDataBase64 ?? '';
       const msDuration: number = (result as any).msDuration ?? 0;
       const binary = atob(base64);
@@ -464,6 +544,7 @@ async function stopRecording() {
 
       showPreview.value = true;
     } catch (err: any) {
+      await stopBgService(); // ensure service is stopped even on error
       error.value = err.message || 'Failed to finish recording';
     }
     return;
@@ -479,6 +560,7 @@ async function stopRecording() {
     mediaStream.value = null;
     await audioContext.value?.close().catch(() => {});
     audioContext.value = null;
+    await stopBgService();
   }
 }
 
@@ -527,11 +609,12 @@ async function saveRecording() {
 
     if (Capacitor.isNativePlatform()) {
       // Android/iOS: R2 presigned PUT is blocked by Android WebView/carrier proxies.
-      // Send base64 through backend which uploads to R2 server-side.
-      processingStatus.value = 'Processing audio...';
+      // Send the full audio as base64 to POST /recordings — the server handles R2 upload.
+      processingStatus.value = 'Preparing audio...';
       const base64 = await blobToBase64(audioBlob.value);
       const sizeMB = ((base64.length * 0.75) / 1024 / 1024).toFixed(1);
       console.log(`[Upload] Native — base64 ~${sizeMB} MB → backend`);
+      processingStatus.value = 'Uploading audio...';
       recording = await recordingsStore.createRecording({
         audioData: base64,
         duration,
@@ -762,6 +845,11 @@ function stopVisualization() {
 .header-dot.active {
   background: var(--ion-color-danger);
   animation: dot-blink 1s ease-in-out infinite;
+}
+
+.header-dot.paused {
+  background: var(--ion-color-warning);
+  animation: dot-blink 2s ease-in-out infinite;
 }
 
 @keyframes dot-blink {
@@ -1080,6 +1168,32 @@ function stopVisualization() {
   margin: 0;
   font-weight: 500;
 }
+
+/* Recording row (pause + stop) */
+.recording-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 28px;
+}
+
+.pause-btn {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  border: 2px solid var(--ion-color-warning);
+  background: rgba(245, 158, 11, 0.1);
+  color: var(--ion-color-warning);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  flex-shrink: 0;
+}
+
+.pause-btn:active { transform: scale(0.93); }
+.pause-btn ion-icon { font-size: 26px; }
 
 .lang-notice {
   display: flex;

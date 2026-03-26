@@ -26,7 +26,7 @@
           <div class="form-card">
 
             <!-- PRIMARY: Google Sign-In -->
-            <button class="google-btn-primary" @click="handleGoogleLogin" :disabled="googleLoading || loading">
+            <!-- <button class="google-btn-primary" @click="handleGoogleLogin" :disabled="googleLoading || loading">
               <ion-spinner v-if="googleLoading" name="crescent"></ion-spinner>
               <template v-else>
                 <svg class="google-icon" viewBox="0 0 24 24">
@@ -37,14 +37,14 @@
                 </svg>
                 <span>Continue with Google</span>
               </template>
-            </button>
+            </button> -->
 
             <!-- Divider -->
-            <div class="divider">
+            <!-- <div class="divider">
               <span class="divider-line"></span>
               <span class="divider-text">or use email</span>
               <span class="divider-line"></span>
-            </div>
+            </div> -->
 
             <!-- SECONDARY: Email/Password -->
             <form @submit.prevent="handleLogin">

@@ -1,6 +1,8 @@
 /* RecAI Theme - Green Primary */
 :root {
-  color-scheme: light dark;
+  /* color-scheme: light dark; ORGINAL VERSION */         
+  color-scheme: light;
+
 
   /* Ionic Color Palette */
   --ion-color-primary: #059669;

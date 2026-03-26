@@ -10,6 +10,7 @@ import RecordingsList from '../views/RecordingsList.vue'
 import RecordingDetail from '../views/RecordingDetail.vue'
 import DeleteAccount from '../views/DeleteAccount.vue'
 import PrivacyPolicy from '../views/PrivacyPolicy.vue'
+import AdminPanel from '../views/AdminPanel.vue'
 
 const routes = [
   {
@@ -26,6 +27,12 @@ const routes = [
     path: '/privacy-policy',
     name: 'PrivacyPolicy',
     component: PrivacyPolicy,
+  },
+  {
+    path: '/admin',
+    name: 'AdminPanel',
+    component: AdminPanel,
+    meta: { requiresAuth: true, requiresAdmin: true },
   },
   {
     path: '/login',
@@ -79,10 +86,13 @@ initAuth()
 // Navigation guards
 router.beforeEach((to, from, next) => {
   const requiresAuth = to.matched.some(record => record.meta.requiresAuth)
+  const requiresAdmin = to.matched.some(record => record.meta.requiresAdmin)
   const isGuestRoute = to.matched.some(record => record.meta.guest)
 
   if (requiresAuth && !authState.isAuthenticated) {
     next('/login')
+  } else if (requiresAdmin && authState.user?.role !== 'admin') {
+    next('/dashboard')
   } else if (isGuestRoute && authState.isAuthenticated) {
     next('/dashboard')
   } else {

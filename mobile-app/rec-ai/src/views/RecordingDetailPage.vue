@@ -603,12 +603,13 @@ function togglePlay() {
 function updateProgress() {
   if (!audioRef.value) return;
   const { currentTime: ct, duration } = audioRef.value;
+  if (!duration || !isFinite(duration)) return;
   progress.value = (ct / duration) * 100;
   currentTime.value = formatTime(ct);
 }
 
 function onLoaded() {
-  if (audioRef.value) {
+  if (audioRef.value && isFinite(audioRef.value.duration)) {
     totalTime.value = formatTime(audioRef.value.duration);
   }
 }
@@ -1145,21 +1146,23 @@ function applyInlineFormatting(text: string): string {
 .ai-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 10px;
+  gap: 8px;
 }
 
 .ai-card {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 10px;
-  padding: 18px 8px;
+  gap: 8px;
+  padding: 14px 4px;
   background: var(--app-surface);
   border: 1.5px solid var(--app-border);
   border-radius: var(--radius-xl);
   cursor: pointer;
   transition: all var(--transition-fast);
   box-shadow: var(--shadow-xs);
+  overflow: hidden;
+  min-width: 0;
 }
 
 .ai-card:active:not(:disabled) { transform: scale(0.96); }
@@ -1175,13 +1178,16 @@ function applyInlineFormatting(text: string): string {
 }
 
 .ai-card-icon {
-  width: 44px;
-  height: 44px;
-  border-radius: var(--radius-md);
+  width: 40px;
+  height: 40px;
+  min-width: 40px;
+  flex-shrink: 0;
+  border-radius: 50%;
   background: var(--app-bg);
   display: flex;
   align-items: center;
   justify-content: center;
+  overflow: hidden;
 }
 
 .ai-card-icon ion-icon { font-size: 22px; color: var(--app-primary); }
@@ -1190,10 +1196,14 @@ function applyInlineFormatting(text: string): string {
 .ai-card-icon.done ion-icon { color: white; }
 
 .ai-card-label {
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 700;
   color: var(--app-text);
   text-align: center;
+  word-break: break-word;
+  line-height: 1.3;
+  width: 100%;
+  padding: 0 2px;
 }
 
 /* Content Tabs */
@@ -1216,16 +1226,25 @@ function applyInlineFormatting(text: string): string {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  padding: 10px 8px;
+  gap: 4px;
+  padding: 10px 4px;
   background: none;
   border: none;
   border-radius: var(--radius-md);
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
   color: var(--app-text-muted);
   cursor: pointer;
   transition: all var(--transition-fast);
+  overflow: hidden;
+  min-width: 0;
+}
+
+.content-tab span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
 }
 
 .content-tab.active {

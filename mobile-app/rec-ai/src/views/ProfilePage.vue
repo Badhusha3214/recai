@@ -357,7 +357,7 @@ async function saveProfile() {
 }
 
 function openHelp() {
-  window.open('mailto:support@echobit.app', '_blank');
+  window.open('mailto:no.reply.echobit@gmail.com', '_blank');
 }
 </script>
 

@@ -7,6 +7,7 @@ import mongoose from 'mongoose';
 import connectDB from './config/database.js';
 import authRoutes from './routes/auth.js';
 import recordingsRoutes from './routes/recordings.js';
+import adminRoutes from './routes/admin.js';
 import { authenticateToken } from './middleware/auth.js';
 
 // Connect to MongoDB
@@ -36,6 +37,7 @@ app.use('/api/auth', authRoutes);
 
 // Protected routes
 app.use('/api/recordings', authenticateToken, recordingsRoutes);
+app.use('/api/admin', adminRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {

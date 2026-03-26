@@ -64,6 +64,28 @@ export const useRecordingsStore = defineStore('recordings', () => {
     }
   }
 
+  async function createRecordingNative(params: {
+    audioData: string;
+    duration: number;
+    mimeType: string;
+    title?: string;
+    onProgress?: (percent: number) => void;
+  }) {
+    processing.value = true;
+    error.value = null;
+    try {
+      const recording = await api.createRecordingNative(params);
+      recordings.value.unshift(recording);
+      currentRecording.value = recording;
+      return recording;
+    } catch (err: any) {
+      error.value = err.message;
+      return null;
+    } finally {
+      processing.value = false;
+    }
+  }
+
   async function updateRecording(id: string, updates: Partial<Recording>) {
     error.value = null;
     try {
@@ -167,6 +189,7 @@ export const useRecordingsStore = defineStore('recordings', () => {
     fetchRecordings,
     fetchRecording,
     createRecording,
+    createRecordingNative,
     updateRecording,
     deleteRecording,
     transcribeRecording,

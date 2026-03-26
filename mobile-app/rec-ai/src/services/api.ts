@@ -119,6 +119,10 @@ class ApiService {
     return data.user;
   }
 
+  async acceptPrivacy(): Promise<void> {
+    await this.api.post('/auth/accept-privacy', {});
+  }
+
   // Recordings
   async getRecordings(): Promise<Recording[]> {
     const { data } = await this.api.get<{ recordings: Recording[] }>('/recordings');
@@ -202,6 +206,49 @@ class ApiService {
     const { data } = await this.api.post<{ recording: Recording }>('/recordings', recordingData, {
       timeout: 300000, // 5 minutes — backend may transcribe synchronously
     });
+    return data.recording;
+  }
+
+  /**
+   * Native-path upload: splits the base64 data URL into ~5 MB chunks,
+   * uploads each chunk independently (each has its own short timeout),
+   * then calls /finalize-upload to assemble and save.
+   * This avoids a single massive request that exceeds the 5-minute timeout.
+   */
+  async createRecordingNative(params: {
+    audioData: string;   // full data URL or raw base64
+    duration: number;
+    mimeType: string;
+    title?: string;
+    onProgress?: (percent: number) => void;
+  }): Promise<Recording> {
+    const { audioData, duration, mimeType, title, onProgress } = params;
+    const CHUNK_SIZE = 5 * 1024 * 1024; // 5 MB per chunk (base64 chars)
+    const totalChunks = Math.ceil(audioData.length / CHUNK_SIZE);
+    const uploadId = `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+
+    onProgress?.(0);
+
+    for (let i = 0; i < totalChunks; i++) {
+      const chunk = audioData.slice(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE);
+      await this.api.post(
+        '/recordings/upload-chunk',
+        { uploadId, chunkIndex: i, totalChunks, chunk },
+        { timeout: 90000 }, // 90 s per chunk
+      );
+      // Chunks account for 0–90 % of progress; finalize is last 10 %
+      onProgress?.(Math.round(((i + 1) / totalChunks) * 90));
+    }
+
+    onProgress?.(90);
+
+    const { data } = await this.api.post<{ recording: Recording }>(
+      '/recordings/finalize-upload',
+      { uploadId, duration, mimeType, title },
+      { timeout: 120000 }, // 2 min to assemble + R2 push
+    );
+
+    onProgress?.(100);
     return data.recording;
   }
 
