@@ -140,8 +140,8 @@
           <div>
             <h3 class="font-semibold text-white mb-1">Account &amp; Data Deletion</h3>
             <p class="text-white/50 text-sm mb-2">Want to delete your account and all data?</p>
-            <router-link to="/login" class="text-emerald-400 hover:text-emerald-300 text-sm font-medium underline transition">
-              Sign in to delete your account →
+          <router-link to="/request-deletion" class="text-emerald-400 hover:text-emerald-300 text-sm font-medium underline transition">
+            Submit a deletion request →
             </router-link>
           </div>
         </div>

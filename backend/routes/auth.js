@@ -4,7 +4,7 @@ import bcrypt from 'bcryptjs';
 import { OAuth2Client } from 'google-auth-library';
 import User from '../models/User.js';
 import { generateToken, authenticateToken } from '../middleware/auth.js';
-import { sendOTPEmail } from '../utils/email.js';
+import { sendOTPEmail, sendDeletionRequestEmail } from '../utils/email.js';
 
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 const router = express.Router();
@@ -337,6 +337,25 @@ router.post('/delete-account', async (req, res) => {
   } catch (error) {
     console.error('Delete account error:', error);
     res.status(500).json({ error: 'Failed to delete account' });
+  }
+});
+
+// Public account deletion REQUEST (no login required — sends email to support)
+router.post('/request-deletion', async (req, res) => {
+  try {
+    const { name, email, reason, additionalInfo } = req.body;
+    if (!name || !email || !reason) {
+      return res.status(400).json({ error: 'Name, email and reason are required' });
+    }
+    // Basic email format check
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return res.status(400).json({ error: 'Invalid email address' });
+    }
+    await sendDeletionRequestEmail({ name, email, reason, additionalInfo: additionalInfo || '' });
+    res.json({ message: 'Deletion request submitted successfully' });
+  } catch (error) {
+    console.error('Deletion request error:', error);
+    res.status(500).json({ error: 'Failed to send deletion request. Please email us directly.' });
   }
 });
 

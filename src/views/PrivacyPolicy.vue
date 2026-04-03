@@ -82,7 +82,7 @@
         </ul>
         <p class="text-sm leading-relaxed">
           To delete your account, visit our
-          <a href="/delete-account" class="text-blue-400 underline hover:text-blue-300">account deletion page</a>
+          <a href="/request-deletion" class="text-blue-400 underline hover:text-blue-300">account deletion request page</a>
           or contact us at
           <a href="mailto:no.reply.echobit@gmail.com" class="text-blue-400 underline hover:text-blue-300">no.reply.echobit@gmail.com</a>.
           Deleting your account permanently removes all your recordings, transcriptions, and personal data.
@@ -118,7 +118,7 @@
       <div class="border-t border-gray-800 pt-6 text-center text-xs text-gray-600">
         © {{ new Date().getFullYear() }} Echobit. All rights reserved.
         <span class="mx-2">·</span>
-        <a href="/delete-account" class="underline hover:text-gray-400">Delete Account</a>
+        <a href="/request-deletion" class="underline hover:text-gray-400">Delete Account</a>
       </div>
     </div>
   </div>

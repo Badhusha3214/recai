@@ -154,7 +154,7 @@
 
         <div class="flex flex-wrap justify-center gap-6 text-sm text-white/40 mb-8">
           <router-link to="/privacy-policy" class="hover:text-emerald-400 transition underline">Privacy Policy</router-link>
-          <router-link to="/delete-account" class="hover:text-emerald-400 transition underline">Delete Account</router-link>
+          <router-link to="/request-deletion" class="hover:text-emerald-400 transition underline">Delete Account</router-link>
           <router-link to="/contact" class="hover:text-emerald-400 transition underline">Contact Us</router-link>
           <router-link to="/login" class="hover:text-emerald-400 transition underline">Sign In</router-link>
         </div>

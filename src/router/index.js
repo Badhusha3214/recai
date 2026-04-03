@@ -12,6 +12,7 @@ import DeleteAccount from '../views/DeleteAccount.vue'
 import PrivacyPolicy from '../views/PrivacyPolicy.vue'
 import AdminPanel from '../views/AdminPanel.vue'
 import ContactUs from '../views/ContactUs.vue'
+import RequestDeletion from '../views/RequestDeletion.vue'
 
 const routes = [
   {
@@ -29,6 +30,11 @@ const routes = [
     path: '/contact',
     name: 'ContactUs',
     component: ContactUs,
+  },
+  {
+    path: '/request-deletion',
+    name: 'RequestDeletion',
+    component: RequestDeletion,
   },
   {
     path: '/privacy-policy',
