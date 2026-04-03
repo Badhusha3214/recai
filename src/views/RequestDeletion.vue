@@ -1,7 +1,7 @@
 <template>
   <div class="min-h-screen bg-gradient-to-br from-black via-gray-900 to-emerald-950 text-white">
 
-    <!-- Fixed Nav -->
+    <!-- Fixed Nav adasd -->
     <nav class="fixed top-0 left-0 right-0 z-50 px-4 sm:px-6 py-4 bg-black/30 backdrop-blur-md border-b border-white/5">
       <div class="max-w-7xl mx-auto flex justify-between items-center">
         <router-link to="/" class="flex items-center space-x-2">
