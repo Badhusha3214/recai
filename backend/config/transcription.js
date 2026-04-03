@@ -5,6 +5,7 @@ import os from 'os';
 import { v4 as uuidv4 } from 'uuid';
 import ffmpeg from 'fluent-ffmpeg';
 import ffmpegInstaller from '@ffmpeg-installer/ffmpeg';
+import ffprobeInstaller from '@ffprobe-installer/ffprobe';
 import { File as NodeFile } from 'node:buffer';
 
 // Polyfill File global for Node.js < 20 (required by OpenAI SDK)
