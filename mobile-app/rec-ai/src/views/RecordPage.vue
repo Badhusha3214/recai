@@ -673,16 +673,22 @@ async function saveRecording() {
       const cloudSync = authStore.user?.cloudSync !== false;
 
       if (cloudSync) {
-        // Cloud Sync ON: upload audio to backend → R2
+        // Cloud Sync ON: chunked upload to backend → R2
+        // Never send the whole base64 in one request — a 20-min WAV is ~50 MB
+        // which causes an Android OOM kill. Use the chunked path instead.
         processingStatus.value = 'Preparing audio...';
         const base64 = await blobToBase64(audioBlob.value);
-        console.log(`[Upload] Cloud — base64 ~${((base64.length * 0.75) / 1024 / 1024).toFixed(1)} MB → backend`);
-        processingStatus.value = 'Uploading audio...';
-        recording = await recordingsStore.createRecording({
+        console.log(`[Upload] Cloud — base64 ~${((base64.length * 0.75) / 1024 / 1024).toFixed(1)} MB → chunked backend`);
+        uploadProgress.value = 0;
+        processingStatus.value = 'Uploading audio... 0%';
+        recording = await recordingsStore.createRecordingNative({
           audioData: base64,
           duration,
           mimeType,
-          autoTranscribe: false,
+          onProgress: (pct) => {
+            uploadProgress.value = pct;
+            processingStatus.value = `Uploading audio... ${pct}%`;
+          },
         });
       } else {
         // Cloud Sync OFF: send audio to server for temporary processing (transcription),
