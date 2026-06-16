@@ -197,6 +197,15 @@
       Back to Recordings
     </button>
 
+    <!-- Processing banner -->
+    <div v-if="isProcessing" class="mb-4 flex items-center gap-3 bg-blue-50 border border-blue-200 rounded-xl p-4">
+      <svg class="animate-spin w-5 h-5 text-blue-500 shrink-0" fill="none" viewBox="0 0 24 24">
+        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+      </svg>
+      <p class="text-blue-800 text-sm font-medium">Transcribing your recording — this may take a few minutes for longer recordings. The page will update automatically.</p>
+    </div>
+
     <div v-if="loading" class="bg-white rounded-2xl p-8 sm:p-12 text-center">
       <div class="animate-spin w-8 h-8 border-4 border-emerald-600 border-t-transparent rounded-full mx-auto"></div>
       <p class="text-gray-500 mt-2">Loading recording...</p>
@@ -631,7 +640,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { useRoute } from 'vue-router';
 import { recordingsApi, paymentsApi, authState } from '../api';
 import { jsPDF } from 'jspdf';
@@ -640,6 +649,26 @@ import html2canvas from 'html2canvas';
 const route = useRoute();
 const recording = ref(null);
 const loading = ref(true);
+let pollingTimer = null;
+
+const isProcessing = computed(() =>
+  ['pending', 'transcribing'].includes(recording.value?.status)
+);
+
+const startPolling = () => {
+  if (pollingTimer) return;
+  pollingTimer = setInterval(async () => {
+    try {
+      const result = await recordingsApi.getOne(route.params.id);
+      recording.value = result.recording;
+      editedTranscript.value = result.recording.transcript || '';
+      if (!['pending', 'transcribing'].includes(result.recording.status)) {
+        clearInterval(pollingTimer);
+        pollingTimer = null;
+      }
+    } catch { /* silently ignore polling errors */ }
+  }, 4000);
+};
 const editingTranscript = ref(false);
 const editedTranscript = ref('');
 const summarizing = ref(false);
@@ -1064,6 +1093,9 @@ onMounted(async () => {
     const result = await recordingsApi.getOne(route.params.id);
     recording.value = result.recording;
     editedTranscript.value = result.recording.transcript || '';
+    if (['pending', 'transcribing'].includes(result.recording.status)) {
+      startPolling();
+    }
   } catch (error) {
     console.error('Failed to load recording:', error);
   } finally {
@@ -1075,5 +1107,12 @@ onMounted(async () => {
     const limits = await recordingsApi.getLimits();
     pdfEnabled.value = limits.limits?.pdfExport ?? true;
   } catch { /* keep default true */ }
+});
+
+onUnmounted(() => {
+  if (pollingTimer) {
+    clearInterval(pollingTimer);
+    pollingTimer = null;
+  }
 });
 </script>

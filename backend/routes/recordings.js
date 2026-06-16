@@ -332,6 +332,62 @@ router.post('/upload-url', async (req, res) => {
   }
 });
 
+// Background transcription — runs after response is sent to avoid proxy timeouts
+const transcribeInBackground = async (recordingId, audioKey, inlineBuffer, mimeType, userDoc, limits) => {
+  try {
+    await Recording.findByIdAndUpdate(recordingId, { status: 'transcribing' });
+
+    let audioBuffer = inlineBuffer;
+    if (!audioBuffer && audioKey) {
+      const audioUrl = await getAudioUrl(audioKey);
+      const response = await fetch(audioUrl);
+      if (!response.ok) throw new Error(`Failed to download audio: ${response.status}`);
+      const arrayBuffer = await response.arrayBuffer();
+      audioBuffer = Buffer.from(arrayBuffer);
+    }
+
+    if (!audioBuffer || audioBuffer.length < 1000) {
+      throw new Error('Audio file is too small or corrupted');
+    }
+
+    const hasSarvamKey = !!process.env.SARVAM_API_KEY;
+    const hasOpenAIKey = !!process.env.OPENAI_API_KEY;
+    const usesSarvam = isIndianUser(userDoc) && hasSarvamKey && limits.indianLanguages;
+    const langCode = getSarvamLanguageCode(userDoc);
+
+    let finalTranscript, transcriptionDuration;
+    if (usesSarvam) {
+      console.log(`[BG ${recordingId}] Using Sarvam AI, lang:`, langCode || 'auto-detect');
+      const result = await transcribeAudioSarvam(audioBuffer, mimeType, langCode);
+      finalTranscript = result.text;
+      transcriptionDuration = result.duration || 0;
+    } else if (hasOpenAIKey) {
+      console.log(`[BG ${recordingId}] Using OpenAI Whisper`);
+      const result = await transcribeAudio(audioBuffer, mimeType);
+      finalTranscript = result.text;
+      transcriptionDuration = result.duration || 0;
+    } else {
+      throw new Error('No transcription API key configured');
+    }
+
+    const update = { transcript: finalTranscript, duration: transcriptionDuration, status: 'transcribed' };
+
+    if (finalTranscript && finalTranscript.length > 20 && process.env.GEMINI_API_KEY) {
+      try {
+        update.title = await generateTitle(finalTranscript);
+      } catch (e) {
+        console.error(`[BG ${recordingId}] Title generation failed:`, e.message);
+      }
+    }
+
+    await Recording.findByIdAndUpdate(recordingId, update);
+    console.log(`[BG ${recordingId}] Transcription complete`);
+  } catch (error) {
+    console.error(`[BG ${recordingId}] Transcription failed:`, error.message);
+    await Recording.findByIdAndUpdate(recordingId, { status: 'failed' }).catch(() => {});
+  }
+};
+
 // Create new recording
 router.post('/', async (req, res) => {
   try {
@@ -340,18 +396,14 @@ router.post('/', async (req, res) => {
     console.log('Creating recording:', {
       title,
       hasAudioData: !!audioData,
-      audioDataLength: audioData ? audioData.length : 0,
       audioKey,
       duration,
       mimeType,
       tempUpload: !!tempUpload,
       hasR2Config: !!process.env.R2_ACCESS_KEY_ID,
-      hasOpenAIKey: !!process.env.OPENAI_API_KEY
     });
 
     // Plan limit checks
-    // For presigned-URL uploads, the client reports the file size since the server never saw the bytes.
-    // tempUpload = audio is processed but not permanently stored; don't count toward storage quota.
     const userDoc = await User.findById(req.user.id);
     const incomingBytes = (audioData && !tempUpload)
       ? Buffer.byteLength(audioData, 'base64')
@@ -361,49 +413,25 @@ router.post('/', async (req, res) => {
     const limits = getPlanLimits(userDoc);
 
     let audioInfo = { audioKey: null, audioUrl: null, audioSize: 0 };
-    let audioBuffer = null;
+    let inlineBuffer = null; // only set for the base64/tempUpload path
 
     // Option 1: Direct upload key provided (file already uploaded to R2)
     if (audioKey && process.env.R2_ACCESS_KEY_ID) {
-      console.log('Using pre-uploaded file with key:', audioKey);
       audioInfo.audioKey = audioKey;
       audioInfo.audioUrl = await getAudioUrl(audioKey);
       audioInfo.audioSize = clientAudioSize || 0;
-
-      // Download from R2 to transcribe
-      if (autoTranscribe !== false && (process.env.OPENAI_API_KEY || process.env.SARVAM_API_KEY)) {
-        try {
-          console.log('Downloading audio from R2 for transcription...');
-          const response = await fetch(audioInfo.audioUrl);
-          if (response.ok) {
-            const arrayBuffer = await response.arrayBuffer();
-            audioBuffer = Buffer.from(arrayBuffer);
-            // Use actual downloaded size for accurate storage tracking
-            audioInfo.audioSize = audioBuffer.length;
-            console.log('Downloaded audio buffer size:', audioBuffer.length);
-          }
-        } catch (downloadError) {
-          console.error('Failed to download audio for transcription:', downloadError);
-        }
-      }
     }
-    // Option 2: Base64 audioData provided
+    // Option 2: Base64 audioData provided (mobile / legacy path)
     else if (audioData) {
       try {
-        // Strip data URL prefix — handles "audio/webm;codecs=opus;base64," etc.
         const base64Data = audioData.replace(/^data:[^,]+,/, '');
-        audioBuffer = Buffer.from(base64Data, 'base64');
-        console.log('Audio buffer size:', audioBuffer.length);
+        inlineBuffer = Buffer.from(base64Data, 'base64');
+        console.log('Audio buffer size:', inlineBuffer.length);
 
         if (process.env.R2_ACCESS_KEY_ID && !tempUpload) {
-          // Permanent cloud storage: upload to R2 and keep the key
-          console.log('Uploading audio to R2...');
-          const uploaded = await uploadAudio(audioBuffer, req.user.id, mimeType || 'audio/webm');
+          const uploaded = await uploadAudio(inlineBuffer, req.user.id, mimeType || 'audio/webm');
           audioInfo = { audioKey: uploaded.key, audioUrl: uploaded.url, audioSize: uploaded.size };
-          console.log('R2 upload success:', audioInfo.audioKey);
-        } else {
-          // tempUpload or no R2 config: use buffer for processing, no permanent audio storage
-          console.log('[TempUpload] Processing audio from buffer without permanent cloud storage');
+          // buffer is still needed for background transcription; clear it after that
         }
       } catch (uploadError) {
         console.error('Audio processing error:', uploadError);
@@ -412,73 +440,37 @@ router.post('/', async (req, res) => {
       console.log('Skipping audio operations:', { hasAudioData: !!audioData, hasAudioKey: !!audioKey, hasR2Config: !!process.env.R2_ACCESS_KEY_ID });
     }
 
-    // Auto-transcribe if requested and we have audio
-    let finalTranscript = transcript || '';
-    let transcriptionDuration = duration || 0;
-    let recordingStatus = 'pending';
+    const willTranscribe = autoTranscribe !== false
+      && (audioInfo.audioKey || inlineBuffer)
+      && (process.env.OPENAI_API_KEY || process.env.SARVAM_API_KEY);
 
-    const hasSarvamKey = !!process.env.SARVAM_API_KEY;
-    const hasOpenAIKey = !!process.env.OPENAI_API_KEY;
-
-    if (autoTranscribe !== false && audioBuffer && (hasOpenAIKey || hasSarvamKey)) {
-      try {
-        if (audioBuffer.length < 1000) {
-          throw new Error('Audio file is too small or corrupted');
-        }
-
-        // userDoc already fetched above (plan limits check)
-        const usesSarvam = isIndianUser(userDoc) && hasSarvamKey && limits.indianLanguages;
-        const langCode = getSarvamLanguageCode(userDoc);
-
-        if (usesSarvam) {
-          console.log('[Transcription] Using Sarvam AI for Indian user, lang:', langCode || 'auto-detect');
-          const transcriptionResult = await transcribeAudioSarvam(audioBuffer, mimeType || 'audio/webm', langCode);
-          finalTranscript = transcriptionResult.text;
-          transcriptionDuration = transcriptionResult.duration || duration || 0;
-        } else {
-          console.log('[Transcription] Using OpenAI Whisper');
-          const transcriptionResult = await transcribeAudio(audioBuffer, mimeType || 'audio/webm');
-          finalTranscript = transcriptionResult.text;
-          transcriptionDuration = transcriptionResult.duration || duration || 0;
-        }
-
-        recordingStatus = 'transcribed';
-        console.log('Transcription complete:', finalTranscript.substring(0, 100));
-      } catch (transcribeError) {
-        console.error('Auto-transcription failed:', transcribeError);
-        // Continue without transcript
-      }
-    }
-
-    // Generate AI title from transcript if we have one and no custom title provided
-    let finalTitle = title;
-    if (!title && finalTranscript && finalTranscript.length > 20 && process.env.GEMINI_API_KEY) {
-      try {
-        console.log('Generating AI title...');
-        finalTitle = await generateTitle(finalTranscript);
-      } catch (titleError) {
-        console.error('Failed to generate AI title:', titleError);
-        finalTitle = `Recording ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}`;
-      }
-    } else if (!title) {
-      finalTitle = `Recording ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}`;
-    }
+    const now = new Date();
+    const initialTitle = title || `Recording ${now.toLocaleDateString()} ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
 
     const recording = await Recording.create({
       user: req.user.id,
-      title: finalTitle,
+      title: initialTitle,
       ...audioInfo,
       audioMimeType: mimeType || 'audio/webm',
-      duration: transcriptionDuration,
-      transcript: finalTranscript,
-      status: recordingStatus
+      duration: duration || 0,
+      transcript: transcript || '',
+      status: willTranscribe ? 'pending' : 'transcribed',
     });
 
-    // Convert to JSON to include virtuals
+    // Respond immediately — transcription runs in the background
     res.status(201).json({ recording: recording.toJSON() });
+
+    if (willTranscribe) {
+      // inlineBuffer for Option 2 (no R2 or tempUpload); null for Option 1 (background will fetch from R2)
+      const bufferForBg = (inlineBuffer && (!audioInfo.audioKey || tempUpload)) ? inlineBuffer : null;
+      transcribeInBackground(recording._id, audioInfo.audioKey || null, bufferForBg, mimeType || 'audio/webm', userDoc, limits)
+        .catch(err => console.error('[BG] Unhandled error:', err));
+    }
   } catch (error) {
     console.error('Error creating recording:', error);
-    res.status(500).json({ error: 'Failed to create recording' });
+    if (!res.headersSent) {
+      res.status(500).json({ error: 'Failed to create recording' });
+    }
   }
 });
 
