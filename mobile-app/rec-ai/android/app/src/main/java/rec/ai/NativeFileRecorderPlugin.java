@@ -184,6 +184,19 @@ public class NativeFileRecorderPlugin extends Plugin {
             releaseRecorder();
         }
 
+        // Wait for the M4A muxer to finish writing the moov atom to disk.
+        // For long recordings (>8 min) the OS hasn't flushed the file by the time
+        // stop() returns, so readChunk sees a partial file and upload cuts short.
+        long prevSize = -1;
+        long curSize = finishedFile.length();
+        int attempts = 0;
+        while (curSize != prevSize && attempts < 25) {
+            prevSize = curSize;
+            try { Thread.sleep(200); } catch (InterruptedException ignored) {}
+            curSize = finishedFile.length();
+            attempts++;
+        }
+
         currentFile = null;
         long durationMs = Math.max(0L, stoppedAtMs - startedAtMs - pausedTotalMs);
         call.resolve(fileResult(finishedFile, durationMs));
@@ -217,17 +230,25 @@ public class NativeFileRecorderPlugin extends Plugin {
                 skipped += extra;
             }
 
-            int read = input.read(buffer);
-            if (read < 0) read = 0;
+            // Read until buffer is full or EOF — single read() is not guaranteed to fill buffer
+            int totalRead = 0;
+            while (totalRead < safeSize) {
+                int n = input.read(buffer, totalRead, safeSize - totalRead);
+                if (n < 0) break;
+                totalRead += n;
+            }
 
-            byte[] exact = new byte[read];
-            System.arraycopy(buffer, 0, exact, 0, read);
+            byte[] exact = new byte[totalRead];
+            System.arraycopy(buffer, 0, exact, 0, totalRead);
+
+            // done = we hit EOF before filling the buffer (don't trust file.length() — it can be stale)
+            boolean done = totalRead < safeSize;
 
             JSObject result = new JSObject();
             result.put("base64", Base64.encodeToString(exact, Base64.NO_WRAP));
-            result.put("bytesRead", read);
-            result.put("nextOffset", offset + read);
-            result.put("done", offset + read >= file.length());
+            result.put("bytesRead", totalRead);
+            result.put("nextOffset", offset + totalRead);
+            result.put("done", done);
             result.put("fileSize", file.length());
             call.resolve(result);
         } catch (IOException error) {
