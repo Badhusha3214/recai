@@ -126,8 +126,18 @@ export const transcribeAudioSarvam = async (audioBuffer, mimeType = 'audio/webm'
   fs.mkdirSync(tempDir, { recursive: true });
 
   try {
+    if (!audioBuffer || audioBuffer.length < 1000) {
+      throw new Error(`Audio buffer too small or empty: ${audioBuffer?.length ?? 0} bytes`);
+    }
+
     fs.writeFileSync(tempFilePath, audioBuffer);
     console.log('[Sarvam] Compressing audio...');
+
+    // Validate file is parseable before attempting compress
+    await getAudioDuration(tempFilePath).catch((err) => {
+      throw new Error(`Invalid or corrupt audio file (ffprobe failed): ${err.message}`);
+    });
+
     await compressAudio(tempFilePath, compressedPath);
 
     // Use duration-based splitting — Sarvam limit is 30s per request

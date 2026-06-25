@@ -143,10 +143,19 @@ export const transcribeAudio = async (audioBuffer, mimeType = 'audio/webm', lang
   });
   
   try {
+    if (!audioBuffer || audioBuffer.length < 1000) {
+      throw new Error(`Audio buffer too small or empty: ${audioBuffer?.length ?? 0} bytes`);
+    }
+
     // Write buffer to temp file
     fs.writeFileSync(tempFilePath, audioBuffer);
     console.log('Temp file written, size:', fs.statSync(tempFilePath).size);
-    
+
+    // Validate file is parseable before attempting compress
+    await getAudioDuration(tempFilePath).catch((err) => {
+      throw new Error(`Invalid or corrupt audio file (ffprobe failed): ${err.message}`);
+    });
+
     // First, try to compress the audio
     console.log('Compressing audio...');
     await compressAudio(tempFilePath, compressedPath);
