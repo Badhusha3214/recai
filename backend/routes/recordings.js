@@ -179,7 +179,7 @@ router.post('/upload-chunk', async (req, res) => {
 // POST /finalize-upload — assemble chunks, push to R2, create DB record, kick off transcription
 router.post('/finalize-upload', async (req, res) => {
   try {
-    const { uploadId, duration, mimeType, title, tempUpload } = req.body;
+    const { uploadId, duration, mimeType, title, tempUpload, audioSize: clientReportedSize } = req.body;
 
     const entry = chunkStore.get(uploadId);
     if (!entry) return res.status(404).json({ error: 'Upload not found or expired' });
@@ -208,7 +208,7 @@ router.post('/finalize-upload', async (req, res) => {
 
     const audioBuffer = Buffer.from(base64Data.replace(/^data:[^,]+,/, ''), 'base64');
     const numChunks = Array.isArray(chunks) ? chunks.length : Object.keys(chunks).length;
-    console.log(`[finalize-upload] Assembled buffer size: ${audioBuffer.length} bytes (${numChunks} chunks, mimeType: ${mimeType}, clientReportedDuration: ${duration}s)`);
+    console.log(`[finalize-upload] Assembled buffer size: ${audioBuffer.length} bytes (${numChunks} chunks, mimeType: ${mimeType}, clientReportedDuration: ${duration}s, deviceFileSize: ${clientReportedSize ?? 'unknown'})`);
 
     const storageCheck = await checkCreateLimits(req.user.id, userDoc, duration || 0, tempUpload ? 0 : audioBuffer.length);
     if (!storageCheck.ok) {

@@ -32,7 +32,7 @@ import java.io.IOException;
 )
 public class NativeFileRecorderPlugin extends Plugin {
 
-    private static final String MIME_TYPE = "audio/aac";
+    private static final String MIME_TYPE = "audio/mp4";
     private static final int DEFAULT_CHUNK_SIZE = 256 * 1024;
 
     private MediaRecorder recorder;
@@ -79,7 +79,7 @@ public class NativeFileRecorderPlugin extends Plugin {
                 return;
             }
 
-            currentFile = File.createTempFile("recording_", ".aac", dir);
+            currentFile = File.createTempFile("recording_", ".m4a", dir);
             recorder = buildRecorder(currentFile);
             recorder.prepare();
             recorder.start();
@@ -105,7 +105,7 @@ public class NativeFileRecorderPlugin extends Plugin {
             : new MediaRecorder();
 
         mediaRecorder.setAudioSource(MediaRecorder.AudioSource.MIC);
-        mediaRecorder.setOutputFormat(MediaRecorder.OutputFormat.AAC_ADTS);
+        mediaRecorder.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4);
         mediaRecorder.setAudioEncoder(MediaRecorder.AudioEncoder.AAC);
         mediaRecorder.setAudioEncodingBitRate(64000);
         mediaRecorder.setAudioSamplingRate(44100);
@@ -184,29 +184,20 @@ public class NativeFileRecorderPlugin extends Plugin {
             releaseRecorder();
         }
 
-        // Wait for the MPEG-4 muxer to finish writing the moov atom.
-        // The moov atom is written AFTER mdat flushes, so a simple size-stability
-        // check exits too early. We poll until stable AND enforce a minimum wait
-        // proportional to file size (longer recordings need more time to finalize).
-        long roughSizeBytes = finishedFile.length();
-        // ~1 second per 10MB, minimum 2s, maximum 15s
-        long minWaitMs = Math.min(15000, Math.max(2000, roughSizeBytes / (10 * 1024 * 1024) * 1000));
-        long waitStart = System.currentTimeMillis();
-        long prevSize = -1;
-        long curSize = roughSizeBytes;
-        int attempts = 0;
-        while (attempts < 75) {
-            prevSize = curSize;
-            try { Thread.sleep(200); } catch (InterruptedException ignored) {}
-            curSize = finishedFile.length();
-            attempts++;
-            boolean sizeStable = curSize == prevSize;
-            boolean minTimeElapsed = System.currentTimeMillis() - waitStart >= minWaitMs;
-            if (sizeStable && minTimeElapsed) break;
-        }
-
         currentFile = null;
         long durationMs = Math.max(0L, stoppedAtMs - startedAtMs - pausedTotalMs);
+
+        // MPEG_4 muxer writes the moov atom last. On some Android/F2FS devices the OS
+        // delays flushing it even after stop() returns. Poll until moov appears (or 5s),
+        // fsyncing each iteration to force pending page-cache writes to the inode.
+        long deadline = System.currentTimeMillis() + 5000;
+        while (!hasMoovAtom(finishedFile) && System.currentTimeMillis() < deadline) {
+            try (java.io.RandomAccessFile raf = new java.io.RandomAccessFile(finishedFile, "rw")) {
+                raf.getChannel().force(true);
+            } catch (IOException ignored) {}
+            try { Thread.sleep(100); } catch (InterruptedException ignored) {}
+        }
+
         call.resolve(fileResult(finishedFile, durationMs));
     }
 
@@ -316,6 +307,27 @@ public class NativeFileRecorderPlugin extends Plugin {
         result.put("durationMs", durationMs);
         result.put("size", file.length());
         return result;
+    }
+
+    /** Walk the top-level MP4 atom list and return true if a 'moov' atom is present. */
+    private boolean hasMoovAtom(File file) {
+        long len = file.length();
+        if (len < 8) return false;
+        try (java.io.RandomAccessFile raf = new java.io.RandomAccessFile(file, "r")) {
+            while (raf.getFilePointer() + 8 <= len) {
+                byte[] header = new byte[8];
+                raf.readFully(header);
+                long size = ((header[0] & 0xFFL) << 24) | ((header[1] & 0xFFL) << 16)
+                          | ((header[2] & 0xFFL) << 8) | (header[3] & 0xFFL);
+                if (header[4] == 'm' && header[5] == 'o' && header[6] == 'o' && header[7] == 'v') {
+                    return true;
+                }
+                if (size < 8) break; // malformed
+                // Seek past atom body (size includes the 8-byte header already read)
+                raf.seek(raf.getFilePointer() + size - 8);
+            }
+        } catch (IOException ignored) {}
+        return false;
     }
 
     private void releaseRecorder() {
