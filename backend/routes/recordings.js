@@ -384,16 +384,30 @@ const transcribeInBackground = async (recordingId, audioKey, inlineBuffer, mimeT
       const result = await transcribeAudioSarvam(audioBuffer, mimeType, langCode);
       finalTranscript = result.text;
       transcriptionDuration = result.duration || 0;
+
+      // Sarvam returned empty — fall back to Whisper for better noise/accent handling
+      if (!finalTranscript && hasOpenAIKey) {
+        console.log(`[BG ${recordingId}] Sarvam returned empty transcript, falling back to Whisper`);
+        const fallback = await transcribeAudio(audioBuffer, mimeType);
+        finalTranscript = fallback.text;
+        transcriptionDuration = fallback.duration || 0;
+        console.log(`[BG ${recordingId}] Whisper result length: ${finalTranscript?.length ?? 0}`);
+      }
+
+      if (!finalTranscript) {
+        console.warn(`[BG ${recordingId}] Both Sarvam and Whisper returned empty — audio likely has no speech`);
+      }
     } else if (hasOpenAIKey) {
       console.log(`[BG ${recordingId}] Using OpenAI Whisper`);
       const result = await transcribeAudio(audioBuffer, mimeType);
       finalTranscript = result.text;
       transcriptionDuration = result.duration || 0;
+      console.log(`[BG ${recordingId}] Whisper result length: ${finalTranscript?.length ?? 0}`);
     } else {
       throw new Error('No transcription API key configured');
     }
 
-    const update = { transcript: finalTranscript, duration: transcriptionDuration, status: 'transcribed' };
+    const update = { transcript: finalTranscript || '', duration: transcriptionDuration, status: 'transcribed' };
 
     if (finalTranscript && finalTranscript.length > 20 && process.env.GEMINI_API_KEY) {
       try {
@@ -616,6 +630,12 @@ router.post('/:id/transcribe', async (req, res) => {
       if (usesSarvam) {
         console.log('[Transcription] Using Sarvam AI, lang:', langCode || 'auto-detect');
         result = await transcribeFromUrlSarvam(audioUrl, recording.audioMimeType, langCode);
+
+        // Sarvam returned empty — fall back to Whisper for better noise/accent handling
+        if (!result.text && process.env.OPENAI_API_KEY) {
+          console.log('[Transcription] Sarvam returned empty, falling back to Whisper');
+          result = await transcribeFromUrl(audioUrl, recording.audioMimeType);
+        }
       } else {
         console.log('[Transcription] Using OpenAI Whisper');
         result = await transcribeFromUrl(audioUrl, recording.audioMimeType);
