@@ -630,6 +630,14 @@ router.post('/:id/transcribe', async (req, res) => {
         recording
       });
     } catch (transcribeError) {
+      const isCorruptAudio = /moov atom|invalid.*corrupt|corrupt.*audio|ffprobe exited|ffmpeg exited/i.test(transcribeError.message);
+      if (isCorruptAudio) {
+        console.warn('Transcription skipped — audio file is incomplete/corrupt (moov atom missing)');
+        recording.transcript = '';
+        recording.status = 'transcribed';
+        await recording.save();
+        return res.json({ transcript: '', duration: recording.duration, recording });
+      }
       console.error('Transcription error:', transcribeError.message);
       recording.status = 'failed';
       await recording.save();

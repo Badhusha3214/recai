@@ -153,7 +153,8 @@ export const transcribeAudio = async (audioBuffer, mimeType = 'audio/webm', lang
 
     // Validate file is parseable before attempting compress
     await getAudioDuration(tempFilePath).catch((err) => {
-      throw new Error(`Invalid or corrupt audio file (ffprobe failed): ${err.message}`);
+      const firstLine = err.message.split('\n')[0];
+      throw new Error(`Invalid or corrupt audio file (ffprobe failed): ${firstLine}`);
     });
 
     // First, try to compress the audio
