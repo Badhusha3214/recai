@@ -32,7 +32,7 @@ import java.io.IOException;
 )
 public class NativeFileRecorderPlugin extends Plugin {
 
-    private static final String MIME_TYPE = "audio/mp4";
+    private static final String MIME_TYPE = "audio/aac";
     private static final int DEFAULT_CHUNK_SIZE = 1024 * 1024;
 
     private MediaRecorder recorder;
@@ -79,7 +79,7 @@ public class NativeFileRecorderPlugin extends Plugin {
                 return;
             }
 
-            currentFile = File.createTempFile("recording_", ".m4a", dir);
+            currentFile = File.createTempFile("recording_", ".aac", dir);
             recorder = buildRecorder(currentFile);
             recorder.prepare();
             recorder.start();
@@ -105,7 +105,7 @@ public class NativeFileRecorderPlugin extends Plugin {
             : new MediaRecorder();
 
         mediaRecorder.setAudioSource(MediaRecorder.AudioSource.MIC);
-        mediaRecorder.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4);
+        mediaRecorder.setOutputFormat(MediaRecorder.OutputFormat.AAC_ADTS);
         mediaRecorder.setAudioEncoder(MediaRecorder.AudioEncoder.AAC);
         mediaRecorder.setAudioEncodingBitRate(64000);
         mediaRecorder.setAudioSamplingRate(44100);

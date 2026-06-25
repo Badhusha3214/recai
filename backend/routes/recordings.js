@@ -407,7 +407,16 @@ const transcribeInBackground = async (recordingId, audioKey, inlineBuffer, mimeT
     console.log(`[BG ${recordingId}] Transcription complete`);
   } catch (error) {
     console.error(`[BG ${recordingId}] Transcription failed:`, error.message);
-    await Recording.findByIdAndUpdate(recordingId, { status: 'failed' }).catch(() => {});
+    // Incomplete MP4 (moov atom missing) means the audio upload was cut short.
+    // Don't mark as 'failed' — save the recording with an empty transcript so
+    // the user can still access it and retry manually.
+    const isCorruptAudio = /moov atom|invalid.*corrupt|corrupt.*audio|ffprobe exited|ffmpeg exited/i.test(error.message);
+    if (isCorruptAudio) {
+      console.warn(`[BG ${recordingId}] Audio file incomplete/corrupt — saving with empty transcript`);
+      await Recording.findByIdAndUpdate(recordingId, { status: 'transcribed', transcript: '' }).catch(() => {});
+    } else {
+      await Recording.findByIdAndUpdate(recordingId, { status: 'failed' }).catch(() => {});
+    }
   }
 };
 
