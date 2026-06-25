@@ -207,7 +207,8 @@ router.post('/finalize-upload', async (req, res) => {
     chunkStore.delete(uploadId);
 
     const audioBuffer = Buffer.from(base64Data.replace(/^data:[^,]+,/, ''), 'base64');
-    console.log('[finalize-upload] Assembled buffer size:', audioBuffer.length);
+    const numChunks = Array.isArray(chunks) ? chunks.length : Object.keys(chunks).length;
+    console.log(`[finalize-upload] Assembled buffer size: ${audioBuffer.length} bytes (${numChunks} chunks, mimeType: ${mimeType}, clientReportedDuration: ${duration}s)`);
 
     const storageCheck = await checkCreateLimits(req.user.id, userDoc, duration || 0, tempUpload ? 0 : audioBuffer.length);
     if (!storageCheck.ok) {

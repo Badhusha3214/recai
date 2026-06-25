@@ -286,23 +286,37 @@ class ApiService {
     onProgress?: (percent: number) => void;
   }): Promise<Recording> {
     const { duration, mimeType, title, totalBytes = 0, tempUpload = false, readChunk, onProgress } = params;
-    const CHUNK_BYTES = 1024 * 1024;
+    const CHUNK_BYTES = 256 * 1024; // 256KB → ~341KB base64, uploads fast even on 2G/3G
     const totalChunks = totalBytes > 0 ? Math.ceil(totalBytes / CHUNK_BYTES) : undefined;
     const uploadId = `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 
     onProgress?.(0);
+    console.log(`[Upload] Starting chunked upload — file size: ${totalBytes} bytes, chunk size: ${CHUNK_BYTES}, expected chunks: ${totalChunks ?? 'unknown'}`);
 
     let offset = 0;
     let chunkIndex = 0;
     while (true) {
-      const { base64, bytesRead, done } = await readChunk(offset, CHUNK_BYTES);
+      const { base64, bytesRead, done, fileSize } = await readChunk(offset, CHUNK_BYTES) as any;
+      console.log(`[Upload] chunk ${chunkIndex}: bytesRead=${bytesRead}, done=${done}, fileSize=${fileSize}`);
       if (!base64 && bytesRead <= 0) break;
 
-      await this.api.post(
-        '/recordings/upload-chunk',
-        { uploadId, chunkIndex, totalChunks, chunk: base64 },
-        { timeout: 90000 },
-      );
+      // Retry up to 3 times on timeout/network errors before giving up
+      let lastErr: any;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          await this.api.post(
+            '/recordings/upload-chunk',
+            { uploadId, chunkIndex, totalChunks, chunk: base64 },
+            { timeout: 60000 }, // 60s is plenty for 341KB even on slow connections
+          );
+          lastErr = null;
+          break;
+        } catch (err: any) {
+          lastErr = err;
+          if (attempt < 2) await new Promise(r => setTimeout(r, 2000 * (attempt + 1)));
+        }
+      }
+      if (lastErr) throw lastErr;
 
       offset += bytesRead;
       chunkIndex++;
@@ -313,6 +327,7 @@ class ApiService {
 
       if (done || bytesRead <= 0) break;
     }
+    console.log(`[Upload] Done — ${chunkIndex} chunks, ${offset} bytes total uploaded`);
 
     onProgress?.(90);
 

@@ -33,7 +33,7 @@ import java.io.IOException;
 public class NativeFileRecorderPlugin extends Plugin {
 
     private static final String MIME_TYPE = "audio/aac";
-    private static final int DEFAULT_CHUNK_SIZE = 1024 * 1024;
+    private static final int DEFAULT_CHUNK_SIZE = 256 * 1024;
 
     private MediaRecorder recorder;
     private File currentFile;
@@ -184,17 +184,25 @@ public class NativeFileRecorderPlugin extends Plugin {
             releaseRecorder();
         }
 
-        // Wait for the M4A muxer to finish writing the moov atom to disk.
-        // For long recordings (>8 min) the OS hasn't flushed the file by the time
-        // stop() returns, so readChunk sees a partial file and upload cuts short.
+        // Wait for the MPEG-4 muxer to finish writing the moov atom.
+        // The moov atom is written AFTER mdat flushes, so a simple size-stability
+        // check exits too early. We poll until stable AND enforce a minimum wait
+        // proportional to file size (longer recordings need more time to finalize).
+        long roughSizeBytes = finishedFile.length();
+        // ~1 second per 10MB, minimum 2s, maximum 15s
+        long minWaitMs = Math.min(15000, Math.max(2000, roughSizeBytes / (10 * 1024 * 1024) * 1000));
+        long waitStart = System.currentTimeMillis();
         long prevSize = -1;
-        long curSize = finishedFile.length();
+        long curSize = roughSizeBytes;
         int attempts = 0;
-        while (curSize != prevSize && attempts < 25) {
+        while (attempts < 75) {
             prevSize = curSize;
             try { Thread.sleep(200); } catch (InterruptedException ignored) {}
             curSize = finishedFile.length();
             attempts++;
+            boolean sizeStable = curSize == prevSize;
+            boolean minTimeElapsed = System.currentTimeMillis() - waitStart >= minWaitMs;
+            if (sizeStable && minTimeElapsed) break;
         }
 
         currentFile = null;
