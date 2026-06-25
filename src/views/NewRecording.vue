@@ -86,7 +86,7 @@
         <!-- Controls -->
         <div class="flex items-center justify-center space-x-4">
           <button
-            v-if="!isRecording && !audioBlob"
+            v-if="!isRecording && !isFinalizingChunks && !audioBlob && !isRecordingReady"
             @click="startRecording"
             :disabled="limitReached"
             class="w-16 h-16 sm:w-20 sm:h-20 bg-gradient-to-r from-pink-500 to-red-500 rounded-full flex items-center justify-center text-white shadow-lg hover:shadow-xl transition-all transform hover:scale-105 disabled:opacity-40 disabled:cursor-not-allowed disabled:scale-100"
@@ -97,7 +97,7 @@
             </svg>
           </button>
 
-          <button 
+          <button
             v-if="isRecording"
             @click="stopRecording"
             class="w-16 h-16 sm:w-20 sm:h-20 bg-gradient-to-r from-pink-500 to-red-500 rounded-full flex items-center justify-center text-white shadow-lg hover:shadow-xl transition-all animate-pulse"
@@ -107,8 +107,16 @@
             </svg>
           </button>
 
-          <button 
-            v-if="audioBlob && !isRecording"
+          <!-- Spinner shown while the last chunk(s) finish uploading after stop -->
+          <div v-if="isFinalizingChunks" class="flex items-center space-x-2 text-gray-400">
+            <svg class="animate-spin w-6 h-6 sm:w-8 sm:h-8" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/>
+            </svg>
+          </div>
+
+          <button
+            v-if="(audioBlob || isRecordingReady) && !isRecording && !isFinalizingChunks"
             @click="resetRecording"
             class="w-12 h-12 sm:w-16 sm:h-16 bg-gray-200 rounded-full flex items-center justify-center text-gray-600 hover:bg-gray-300 transition"
           >
@@ -119,7 +127,7 @@
         </div>
 
         <p class="text-gray-500 mt-4 text-xs sm:text-sm">
-          {{ isRecording ? 'Recording in progress... Click to stop' : audioBlob ? 'Recording complete' : 'Click to start recording' }}
+          {{ isRecording ? 'Recording in progress... Click to stop' : isFinalizingChunks ? 'Saving last chunks...' : (audioBlob || isRecordingReady) ? 'Recording complete' : 'Click to start recording' }}
         </p>
       </div>
 
@@ -189,7 +197,7 @@
       </div>
 
       <!-- Info Message -->
-      <div v-if="audioBlob || uploadedFile" class="mt-6 p-4 bg-emerald-50 border border-emerald-200 rounded-xl">
+      <div v-if="(isRecordingReady || uploadedFile) && !isFinalizingChunks" class="mt-6 p-4 bg-emerald-50 border border-emerald-200 rounded-xl">
         <div class="flex items-center space-x-3">
           <svg class="w-5 h-5 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -214,7 +222,14 @@
 
       <!-- Action Buttons -->
       <div class="mt-8 flex items-center justify-end space-x-4">
-        <button 
+        <button
+          @click="showCrashLog"
+          class="px-3 py-2 text-xs text-gray-400 hover:text-gray-600 transition"
+          title="Show crash log"
+        >
+          [debug]
+        </button>
+        <button
           @click="$router.push('/dashboard')"
           class="px-6 py-3 text-gray-600 hover:text-gray-800 font-medium transition"
         >
@@ -222,7 +237,7 @@
         </button>
         <button
           @click="saveRecording"
-          :disabled="saving || (!audioBlob && !uploadedFile) || limitReached"
+          :disabled="saving || isFinalizingChunks || (!isRecordingReady && !uploadedFile) || limitReached"
           class="px-6 py-3 bg-emerald-600 text-white rounded-xl font-medium hover:bg-emerald-700 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
         >
           <svg v-if="saving" class="animate-spin w-5 h-5" fill="none" viewBox="0 0 24 24">
@@ -242,6 +257,18 @@ import { useRouter } from 'vue-router';
 import { recordingsApi } from '../api';
 
 const router = useRouter();
+
+// ── Crash diagnostics ──────────────────────────────────────────────────────
+// Writes timestamped markers to localStorage so they survive a tab kill.
+// Read them from the browser console after a crash: JSON.parse(localStorage.getItem('eb_crash'))
+const dbg = (msg) => {
+  try {
+    const logs = JSON.parse(localStorage.getItem('eb_crash') || '[]');
+    logs.push(`${new Date().toISOString().slice(11,23)} ${msg}`);
+    if (logs.length > 80) logs.splice(0, logs.length - 80);
+    localStorage.setItem('eb_crash', JSON.stringify(logs));
+  } catch {}
+};
 
 // Plan limits
 const usageCount = ref(0);
@@ -285,11 +312,18 @@ const audioLevels = ref(Array(30).fill(10));
 // File upload
 const uploadedFile = ref(null);
 const isDragging = ref(false);
+const isRecordingReady = ref(false);
+// true while we wait for the last in-flight chunk uploads after stop()
+const isFinalizingChunks = ref(false);
 
 let mediaRecorder = null;
-let audioChunks = [];
 let timerInterval = null;
 let analyserInterval = null;
+
+// Per-session streaming state (not reactive — never needed in template)
+let liveUploadId = null;
+let liveChunkIdx = 0;
+let liveChunkPromises = [];
 
 const formatTime = (seconds) => {
   const mins = Math.floor(seconds / 60);
@@ -305,10 +339,20 @@ const getBarHeight = (index) => {
 };
 
 const startRecording = async () => {
+  dbg('startRecording');
   try {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    mediaRecorder = new MediaRecorder(stream);
-    audioChunks = [];
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: { channelCount: { ideal: 1 }, echoCancellation: true, noiseSuppression: true }
+    });
+    dbg('getUserMedia ok');
+    mediaRecorder = new MediaRecorder(stream, { audioBitsPerSecond: 32000 });
+    isRecordingReady.value = false;
+
+    // Init per-session streaming state
+    liveUploadId = Date.now().toString(36) + Math.random().toString(36).slice(2);
+    liveChunkIdx = 0;
+    liveChunkPromises = [];
+    dbg(`session ${liveUploadId}`);
 
     // Audio visualization
     const audioContext = new AudioContext();
@@ -316,34 +360,74 @@ const startRecording = async () => {
     const analyser = audioContext.createAnalyser();
     analyser.fftSize = 64;
     source.connect(analyser);
-    
+
     const dataArray = new Uint8Array(analyser.frequencyBinCount);
-    
+
     analyserInterval = setInterval(() => {
-      analyser.getByteFrequencyData(dataArray);
-      audioLevels.value = Array.from(dataArray.slice(0, 30)).map(v => Math.max(10, v / 3));
-    }, 50);
+      try {
+        analyser.getByteFrequencyData(dataArray);
+        audioLevels.value = Array.from(dataArray.slice(0, 30)).map(v => Math.max(10, v / 3));
+      } catch (e) {
+        clearInterval(analyserInterval);
+      }
+    }, 100);
 
     mediaRecorder.ondataavailable = (event) => {
-      audioChunks.push(event.data);
+      if (event.data.size === 0) return;
+      const idx = liveChunkIdx++;
+      dbg(`chunk ${idx} size=${event.data.size}`);
+      // FileReader is the safe cross-browser way to base64-encode a Blob without
+      // blowing the call stack (String.fromCharCode spread fails on large chunks)
+      const p = new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const base64 = reader.result.split(',')[1];
+          dbg(`chunk ${idx} encoded len=${base64.length}`);
+          recordingsApi.uploadChunk(liveUploadId, idx, base64)
+            .then(() => { dbg(`chunk ${idx} uploaded ok`); resolve(); })
+            .catch(err => { dbg(`chunk ${idx} UPLOAD FAILED: ${err.message}`); resolve(); });
+        };
+        reader.onerror = () => { dbg(`chunk ${idx} FileReader error`); resolve(); };
+        reader.readAsDataURL(event.data);
+      });
+      liveChunkPromises.push(p);
     };
 
+    // Synchronous onstop — returning a Promise here would be an unhandled rejection
+    // in the browser's event system and can trigger a page reload in some WebViews.
     mediaRecorder.onstop = () => {
-      audioBlob.value = new Blob(audioChunks, { type: 'audio/webm' });
-      audioUrl.value = URL.createObjectURL(audioBlob.value);
-      stream.getTracks().forEach(track => track.stop());
-      audioContext.close();
+      dbg('onstop fired');
       clearInterval(analyserInterval);
+      dbg('onstop: clearInterval done');
+      try { stream.getTracks().forEach(t => t.stop()); } catch (e) { dbg(`onstop: track.stop err ${e.message}`); }
+      dbg('onstop: tracks stopped');
+      audioContext.close().catch(() => {});
+      dbg('onstop: audioContext.close() called');
+      // Flip out of recording immediately so the pulsing stop-button disappears.
+      // isFinalizingChunks keeps us from flashing back to "start recording" state.
+      isRecording.value = false;
+      isFinalizingChunks.value = true;
       audioLevels.value = Array(30).fill(10);
+      dbg(`onstop: state updated, waiting for ${liveChunkPromises.length} promises`);
+      // Snapshot the promise array — resetRecording() can replace the reference
+      const pending = liveChunkPromises.slice();
+      Promise.all(pending)
+        .catch(() => {})
+        .then(() => {
+          dbg('onstop: all chunks settled, isRecordingReady=true');
+          isFinalizingChunks.value = false;
+          isRecordingReady.value = true;
+        });
     };
 
-    mediaRecorder.start();
+    mediaRecorder.start(5000); // 5-second slices — browser releases PCM after each emit
     isRecording.value = true;
     recordingTime.value = 0;
     
     timerInterval = setInterval(() => {
       recordingTime.value++;
       if (maxDurationSecs.value !== null && recordingTime.value >= maxDurationSecs.value) {
+        dbg(`auto-stop at ${recordingTime.value}s (limit=${maxDurationSecs.value}s)`);
         stopRecording();
       }
     }, 1000);
@@ -354,14 +438,22 @@ const startRecording = async () => {
 };
 
 const stopRecording = () => {
+  dbg(`stopRecording called state=${mediaRecorder?.state} time=${recordingTime.value}s chunks=${liveChunkIdx}`);
   if (mediaRecorder && mediaRecorder.state !== 'inactive') {
     mediaRecorder.stop();
-    isRecording.value = false;
+    dbg('mediaRecorder.stop() returned');
     clearInterval(timerInterval);
+    // isRecording stays true until onstop fires so the template
+    // never flashes back to the "start recording" state mid-transition
   }
 };
 
 const resetRecording = () => {
+  liveUploadId = null;
+  liveChunkIdx = 0;
+  liveChunkPromises = [];
+  isRecordingReady.value = false;
+  isFinalizingChunks.value = false;
   audioBlob.value = null;
   audioUrl.value = null;
   recordingTime.value = 0;
@@ -421,57 +513,50 @@ const formatFileSize = (bytes) => {
 const saveRecording = async () => {
   saving.value = true;
   uploadProgress.value = 0;
-  
+
   try {
-    let audioKey = null;
-    const mimeType = audioBlob.value?.type || 'audio/webm';
-    
-    // Step 1: Get presigned URL and upload directly to R2
-    if (audioBlob.value) {
-      savingStatus.value = 'Preparing upload...';
-      
-      try {
-        // Get presigned URL from backend
-        const { uploadUrl, key } = await recordingsApi.getUploadUrl(mimeType);
-        audioKey = key;
-        
-        savingStatus.value = 'Uploading audio...';
-        
-        // Upload directly to R2 with progress tracking
-        await recordingsApi.uploadToR2(uploadUrl, audioBlob.value, (percent) => {
-          uploadProgress.value = percent;
-          savingStatus.value = `Uploading... ${percent}%`;
-        });
-        
-        console.log('Direct upload to R2 complete:', audioKey);
-      } catch (uploadError) {
-        console.error('Direct upload failed:', uploadError);
-        throw new Error('Failed to upload audio file. Please try again.');
-      }
+    if (isRecordingReady.value && !uploadedFile.value) {
+      // Live recording path: chunks already on the server, just finalize
+      savingStatus.value = 'Processing and transcribing...';
+      const now = new Date();
+      const title = `Recording ${now.toLocaleDateString()} ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+      const result = await recordingsApi.finalizeUpload(liveUploadId, {
+        duration: recordingTime.value || 0,
+        mimeType: 'audio/webm',
+        title,
+      });
+      const recordingId = result.recording._id || result.recording.id;
+      if (!recordingId) throw new Error('No recording ID returned from server');
+      router.push(`/dashboard/recordings/${recordingId}`);
+      return;
     }
+
+    // File upload path (unchanged)
+    if (!audioBlob.value) return;
+    const mimeType = audioBlob.value.type || 'audio/webm';
+
+    savingStatus.value = 'Preparing upload...';
+    const { uploadUrl, key } = await recordingsApi.getUploadUrl(mimeType);
+
+    savingStatus.value = 'Uploading audio...';
+    await recordingsApi.uploadToR2(uploadUrl, audioBlob.value, (percent) => {
+      uploadProgress.value = percent;
+      savingStatus.value = `Uploading... ${percent}%`;
+    });
 
     savingStatus.value = 'Processing and transcribing...';
-
-    // Step 2: Create recording with audioKey (backend will transcribe)
     const now = new Date();
-    const autoTitle = uploadedFile.value 
-      ? uploadedFile.value.name.replace(/\.[^/.]+$/, '')
-      : `Recording ${now.toLocaleDateString()} ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
-
-    const recordingData = {
-      title: autoTitle,
-      audioKey,
+    const result = await recordingsApi.create({
+      title: uploadedFile.value
+        ? uploadedFile.value.name.replace(/\.[^/.]+$/, '')
+        : `Recording ${now.toLocaleDateString()} ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
+      audioKey: key,
       mimeType,
       duration: recordingTime.value || 0,
-      audioSize: audioBlob.value?.size || 0
-    };
-
-    const result = await recordingsApi.create(recordingData);
-    console.log('Create recording result:', result);
+      audioSize: audioBlob.value?.size || 0,
+    });
     const recordingId = result.recording._id || result.recording.id;
-    if (!recordingId) {
-      throw new Error('No recording ID returned from server');
-    }
+    if (!recordingId) throw new Error('No recording ID returned from server');
     router.push(`/dashboard/recordings/${recordingId}`);
   } catch (error) {
     console.error('Error saving recording:', error);
@@ -483,14 +568,20 @@ const saveRecording = async () => {
   }
 };
 
+const showCrashLog = () => {
+  const raw = localStorage.getItem('eb_crash');
+  if (!raw) { alert('No crash log found.'); return; }
+  const logs = JSON.parse(raw);
+  alert('Last ' + logs.length + ' events:\n\n' + logs.join('\n'));
+};
+
 onUnmounted(() => {
   if (timerInterval) clearInterval(timerInterval);
   if (analyserInterval) clearInterval(analyserInterval);
   if (mediaRecorder && mediaRecorder.state !== 'inactive') {
     mediaRecorder.stop();
   }
-  if (audioUrl.value) {
-    URL.revokeObjectURL(audioUrl.value);
-  }
+  if (audioUrl.value) URL.revokeObjectURL(audioUrl.value);
+  liveChunkPromises = []; // abandon in-flight uploads on unmount
 });
 </script>

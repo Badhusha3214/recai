@@ -6,4 +6,5 @@
     <files-path name="internal_documents" path="." />
     <!-- App's external files directory (used by Capacitor Filesystem Directory.ExternalStorage) -->
     <external-files-path name="external_documents" path="." />
+    <cache-path name="recording_cache" path="recordings/" />
 </paths>

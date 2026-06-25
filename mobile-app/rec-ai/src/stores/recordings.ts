@@ -87,6 +87,30 @@ export const useRecordingsStore = defineStore('recordings', () => {
     }
   }
 
+  async function createRecordingFromChunks(params: {
+    duration: number;
+    mimeType: string;
+    title?: string;
+    totalBytes?: number;
+    tempUpload?: boolean;
+    readChunk: (offset: number, size: number) => Promise<{ base64: string; bytesRead: number; done: boolean }>;
+    onProgress?: (percent: number) => void;
+  }) {
+    processing.value = true;
+    error.value = null;
+    try {
+      const recording = await api.createRecordingFromChunks(params);
+      recordings.value.unshift(recording);
+      currentRecording.value = recording;
+      return recording;
+    } catch (err: any) {
+      error.value = err.message;
+      return null;
+    } finally {
+      processing.value = false;
+    }
+  }
+
   async function updateRecording(id: string, updates: Partial<Recording>) {
     error.value = null;
     try {
@@ -191,6 +215,7 @@ export const useRecordingsStore = defineStore('recordings', () => {
     fetchRecording,
     createRecording,
     createRecordingNative,
+    createRecordingFromChunks,
     updateRecording,
     deleteRecording,
     transcribeRecording,

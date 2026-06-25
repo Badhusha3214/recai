@@ -189,7 +189,6 @@ import { closeOutline, mic, playOutline, pauseOutline, trashOutline, checkmarkOu
 import { Capacitor, registerPlugin } from '@capacitor/core';
 import { Filesystem, Directory } from '@capacitor/filesystem';
 import type { PluginListenerHandle } from '@capacitor/core';
-import { CapacitorVoiceRecorder } from '@lgicc/capacitor-voice-recorder';
 import { useRecordingsStore } from '@/stores/recordings';
 import { useAuthStore } from '@/stores/auth';
 import { api } from '@/services/api';
@@ -199,6 +198,25 @@ import { api } from '@/services/api';
 // (screen off, app minimised). No-op on web / future iOS builds.
 interface RecordingServicePlugin { start(): Promise<void>; stop(): Promise<void>; }
 const RecordingService = registerPlugin<RecordingServicePlugin>('RecordingService');
+
+interface NativeRecordingFile {
+  path: string;
+  uri?: string;
+  webPath?: string;
+  mimeType: string;
+  durationMs: number;
+  size: number;
+}
+interface NativeFileRecorderPlugin {
+  start(): Promise<void>;
+  pause(): Promise<void>;
+  resume(): Promise<void>;
+  stop(): Promise<NativeRecordingFile>;
+  readChunk(options: { path: string; offset: number; size: number }): Promise<{ base64: string; bytesRead: number; done: boolean; nextOffset: number; fileSize: number }>;
+  copyToData(options: { path: string; fileName: string }): Promise<{ path: string }>;
+  deleteFile(options: { path: string }): Promise<void>;
+}
+const NativeFileRecorder = registerPlugin<NativeFileRecorderPlugin>('NativeFileRecorder');
 
 async function startBgService() {
   if (Capacitor.isNativePlatform()) {
@@ -265,6 +283,7 @@ const mediaStream = ref<MediaStream | null>(null);
 
 // Native recorder
 const voiceRecorderListener = ref<PluginListenerHandle | null>(null);
+const nativeRecordingFile = ref<NativeRecordingFile | null>(null);
 
 // File Upload
 const fileInputRef = ref<HTMLInputElement | null>(null);
@@ -352,8 +371,12 @@ function cleanup() {
   voiceRecorderListener.value?.remove();
   voiceRecorderListener.value = null;
   if (Capacitor.isNativePlatform() && isRecording.value) {
-    CapacitorVoiceRecorder.stopRecording().catch(() => {});
+    NativeFileRecorder.stop().catch(() => {});
   }
+  if (nativeRecordingFile.value?.path && !isProcessing.value) {
+    NativeFileRecorder.deleteFile({ path: nativeRecordingFile.value.path }).catch(() => {});
+  }
+  nativeRecordingFile.value = null;
   mediaRecorder.value?.state !== 'inactive' && mediaRecorder.value?.stop();
   sourceNode.value?.disconnect();
   sourceNode.value = null;
@@ -389,32 +412,17 @@ async function startRecording(retryCount = 0) {
   error.value = '';
   audioChunks.value = [];
   recordingTime.value = 0;
+  nativeRecordingFile.value = null;
 
   if (Capacitor.isNativePlatform()) {
-    // Native path: use CapacitorVoiceRecorder to bypass WebView getUserMedia.
-    // startRecording() triggers the OS permission dialog via requestPermissionForAlias.
-    // If doesUserGaveAudioRecordingPermission() returns false despite permission being
-    // granted (Capacitor 8 compat issue), fall back to beginRecording() which bypasses
-    // that check and calls AudioRecord directly.
     try {
-      await CapacitorVoiceRecorder.startRecording();
+      await NativeFileRecorder.start();
     } catch (startErr: any) {
       const msg: string = startErr?.message ?? String(startErr ?? '');
       if (msg === 'MISSING_MICROPHONE_PERMISSION') {
-        try {
-          await (CapacitorVoiceRecorder as any).beginRecording();
-          // fall through -- recording started via direct path
-        } catch (directErr: any) {
-          const dm: string = directErr?.message ?? String(directErr ?? '');
-          if (dm === 'MICROPHONE_IN_USE') {
-            error.value = 'Microphone is in use by another app. Close it and try again.';
-          } else {
-            // SecurityException = OS permission truly not granted
-            const retry = await showPermissionAlert();
-            if (retry) setTimeout(() => startRecording(), 400);
-          }
-          return;
-        }
+        const retry = await showPermissionAlert();
+        if (retry) setTimeout(() => startRecording(), 400);
+        return;
       } else if (msg === 'MICROPHONE_IN_USE') {
         error.value = 'Microphone is in use by another app. Close it and try again.';
         return;
@@ -529,7 +537,7 @@ async function pauseRecording() {
 
   if (Capacitor.isNativePlatform()) {
     try {
-      await (CapacitorVoiceRecorder as any).pauseRecording();
+      await NativeFileRecorder.pause();
     } catch {
       // Plugin may not support pause; timer is paused, audio continues recording
     }
@@ -548,7 +556,7 @@ async function resumeRecording() {
 
   if (Capacitor.isNativePlatform()) {
     try {
-      await (CapacitorVoiceRecorder as any).resumeRecording();
+      await NativeFileRecorder.resume();
     } catch {
       // Plugin may not support resume; just restart timer
     }
@@ -572,16 +580,12 @@ async function stopRecording() {
     voiceRecorderListener.value?.remove();
     voiceRecorderListener.value = null;
     try {
-      const result = await CapacitorVoiceRecorder.stopRecording();
+      const result = await NativeFileRecorder.stop();
       await stopBgService(); // stop AFTER we have the audio data
-      const base64: string = (result as any).base64 ?? (result as any).recordDataBase64 ?? '';
-      const msDuration: number = (result as any).msDuration ?? 0;
-      const binary = atob(base64);
-      const bytes = new Uint8Array(binary.length);
-      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-      audioBlob.value = new Blob([bytes], { type: 'audio/wav' });
-      audioUrl.value = URL.createObjectURL(audioBlob.value);
-      const secs = Math.round(msDuration / 1000);
+      nativeRecordingFile.value = result;
+      audioBlob.value = null;
+      audioUrl.value = Capacitor.convertFileSrc(result.path);
+      const secs = Math.round((result.durationMs ?? 0) / 1000);
       uploadedFileDuration.value = secs;
       recordingTime.value = secs;
 
@@ -647,24 +651,27 @@ function seekAudio(e: MouseEvent) {
 }
 
 function discardRecording() {
+  const nativePath = nativeRecordingFile.value?.path;
   cleanup();
+  if (nativePath) NativeFileRecorder.deleteFile({ path: nativePath }).catch(() => {});
   showPreview.value = false;
   audioBlob.value = null;
   audioUrl.value = null;
+  nativeRecordingFile.value = null;
   recordingTime.value = 0;
   uploadedFileDuration.value = 0;
   waveformBars.value = Array(40).fill(12);
 }
 
 async function saveRecording() {
-  if (!audioBlob.value) return;
+  if (!audioBlob.value && !nativeRecordingFile.value) return;
 
   isProcessing.value = true;
   processingTitle.value = 'Saving';
   showPreview.value = false;
 
   const duration = uploadedFileDuration.value || recordingTime.value;
-  const mimeType = audioBlob.value.type || 'audio/webm';
+  const mimeType = nativeRecordingFile.value?.mimeType || audioBlob.value?.type || 'audio/webm';
 
   try {
     let recording;
@@ -672,12 +679,36 @@ async function saveRecording() {
     if (Capacitor.isNativePlatform()) {
       const cloudSync = authStore.user?.cloudSync !== false;
 
-      if (cloudSync) {
+      if (nativeRecordingFile.value) {
+        uploadProgress.value = 0;
+        processingStatus.value = 'Uploading audio... 0%';
+        const file = nativeRecordingFile.value;
+        recording = await recordingsStore.createRecordingFromChunks({
+          duration,
+          mimeType,
+          totalBytes: file.size,
+          tempUpload: !cloudSync,
+          readChunk: (offset, size) => NativeFileRecorder.readChunk({ path: file.path, offset, size }),
+          onProgress: (pct) => {
+            uploadProgress.value = pct;
+            processingStatus.value = `Uploading audio... ${pct}%`;
+          },
+        });
+
+        if (recording && !cloudSync) {
+          processingStatus.value = 'Saving to device...';
+          const extFromMime = mimeType.split('/')[1]?.split(';')[0] || 'webm';
+          await NativeFileRecorder.copyToData({
+            path: file.path,
+            fileName: `audio_${recording._id}.${extFromMime}`,
+          });
+        }
+      } else if (cloudSync) {
         // Cloud Sync ON: chunked upload to backend → R2
         // Never send the whole base64 in one request — a 20-min WAV is ~50 MB
         // which causes an Android OOM kill. Use the chunked path instead.
         processingStatus.value = 'Preparing audio...';
-        const base64 = await blobToBase64(audioBlob.value);
+        const base64 = await blobToBase64(audioBlob.value!);
         console.log(`[Upload] Cloud — base64 ~${((base64.length * 0.75) / 1024 / 1024).toFixed(1)} MB → chunked backend`);
         uploadProgress.value = 0;
         processingStatus.value = 'Uploading audio... 0%';
@@ -694,7 +725,7 @@ async function saveRecording() {
         // Cloud Sync OFF: send audio to server for temporary processing (transcription),
         // then save audio locally. Audio is never permanently stored in cloud.
         processingStatus.value = 'Preparing audio...';
-        const base64Full = await blobToBase64(audioBlob.value);
+        const base64Full = await blobToBase64(audioBlob.value!);
         const base64Data = base64Full.replace(/^data:[^,]+,/, '');
         processingStatus.value = 'Transcribing...';
         recording = await recordingsStore.createRecording({
@@ -722,7 +753,7 @@ async function saveRecording() {
       uploadProgress.value = 0;
       processingStatus.value = 'Uploading audio... 0%';
       const { uploadUrl, key } = await api.getUploadUrl(mimeType);
-      await api.uploadToR2(uploadUrl, audioBlob.value, mimeType, (pct) => {
+      await api.uploadToR2(uploadUrl, audioBlob.value!, mimeType, (pct) => {
         uploadProgress.value = pct;
         processingStatus.value = `Uploading audio... ${pct}%`;
       });
@@ -736,6 +767,10 @@ async function saveRecording() {
     }
 
     if (recording) {
+      if (nativeRecordingFile.value?.path) {
+        await NativeFileRecorder.deleteFile({ path: nativeRecordingFile.value.path }).catch(() => {});
+        nativeRecordingFile.value = null;
+      }
       router.replace(`/recording/${recording._id}`);
     } else {
       error.value = recordingsStore.error || 'Failed to save';

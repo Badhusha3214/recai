@@ -276,6 +276,56 @@ class ApiService {
     return data.recording;
   }
 
+  async createRecordingFromChunks(params: {
+    duration: number;
+    mimeType: string;
+    title?: string;
+    totalBytes?: number;
+    tempUpload?: boolean;
+    readChunk: (offset: number, size: number) => Promise<{ base64: string; bytesRead: number; done: boolean }>;
+    onProgress?: (percent: number) => void;
+  }): Promise<Recording> {
+    const { duration, mimeType, title, totalBytes = 0, tempUpload = false, readChunk, onProgress } = params;
+    const CHUNK_BYTES = 1024 * 1024;
+    const totalChunks = totalBytes > 0 ? Math.ceil(totalBytes / CHUNK_BYTES) : undefined;
+    const uploadId = `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+
+    onProgress?.(0);
+
+    let offset = 0;
+    let chunkIndex = 0;
+    while (true) {
+      const { base64, bytesRead, done } = await readChunk(offset, CHUNK_BYTES);
+      if (!base64 && bytesRead <= 0) break;
+
+      await this.api.post(
+        '/recordings/upload-chunk',
+        { uploadId, chunkIndex, totalChunks, chunk: base64 },
+        { timeout: 90000 },
+      );
+
+      offset += bytesRead;
+      chunkIndex++;
+      const pct = totalBytes > 0
+        ? Math.min(90, Math.round((offset / totalBytes) * 90))
+        : Math.min(90, chunkIndex * 5);
+      onProgress?.(pct);
+
+      if (done || bytesRead <= 0) break;
+    }
+
+    onProgress?.(90);
+
+    const { data } = await this.api.post<{ recording: Recording }>(
+      '/recordings/finalize-upload',
+      { uploadId, duration, mimeType, title, audioSize: totalBytes, tempUpload },
+      { timeout: 120000 },
+    );
+
+    onProgress?.(100);
+    return data.recording;
+  }
+
   async updateRecording(id: string, updates: Partial<Recording>): Promise<Recording> {
     const { data } = await this.api.patch<{ recording: Recording }>(`/recordings/${id}`, updates);
     return data.recording;

@@ -212,6 +212,22 @@ export const recordingsApi = {
     return apiRequest(`/recordings/${id}`);
   },
 
+  // Stream a single recorded chunk to the server (no totalChunks needed)
+  async uploadChunk(uploadId, chunkIndex, base64Data) {
+    return apiRequest('/recordings/upload-chunk', {
+      method: 'POST',
+      body: JSON.stringify({ uploadId, chunkIndex, chunk: base64Data }),
+    });
+  },
+
+  // Assemble streamed chunks into a recording and kick off transcription
+  async finalizeUpload(uploadId, { duration, mimeType, title }) {
+    return apiRequest('/recordings/finalize-upload', {
+      method: 'POST',
+      body: JSON.stringify({ uploadId, duration, mimeType, title }),
+    });
+  },
+
   // Get presigned URL for direct upload to R2
   async getUploadUrl(mimeType) {
     return apiRequest('/recordings/upload-url', {

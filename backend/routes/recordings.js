@@ -146,24 +146,28 @@ setInterval(() => {
   }
 }, 10 * 60 * 1000);
 
-// POST /upload-chunk  — receive one base64 slice from the mobile client
+// POST /upload-chunk  — receive one base64 slice (web or mobile client)
+// totalChunks is optional: omit for streaming mode (web), provide for fixed-size mode (mobile)
 router.post('/upload-chunk', async (req, res) => {
   try {
     const { uploadId, chunkIndex, totalChunks, chunk } = req.body;
-    if (!uploadId || chunkIndex === undefined || !totalChunks || chunk === undefined) {
+    if (!uploadId || chunkIndex === undefined || chunk === undefined) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
 
     let entry = chunkStore.get(uploadId);
     if (!entry) {
-      entry = { chunks: new Array(totalChunks).fill(null), totalChunks, userId: req.user.id, createdAt: Date.now() };
+      // streaming mode uses a plain object keyed by index; fixed mode uses a pre-sized array
+      entry = {
+        chunks: totalChunks ? new Array(totalChunks).fill(null) : {},
+        totalChunks: totalChunks || null,
+        userId: req.user.id,
+        createdAt: Date.now(),
+      };
       chunkStore.set(uploadId, entry);
     }
 
-    if (entry.userId !== req.user.id) {
-      return res.status(403).json({ error: 'Forbidden' });
-    }
-
+    if (entry.userId !== req.user.id) return res.status(403).json({ error: 'Forbidden' });
     entry.chunks[chunkIndex] = chunk;
     res.json({ ok: true, received: chunkIndex });
   } catch (error) {
@@ -172,56 +176,75 @@ router.post('/upload-chunk', async (req, res) => {
   }
 });
 
-// POST /finalize-upload — assemble chunks, push to R2, create DB record
+// POST /finalize-upload — assemble chunks, push to R2, create DB record, kick off transcription
 router.post('/finalize-upload', async (req, res) => {
   try {
-    const { uploadId, duration, mimeType, title } = req.body;
+    const { uploadId, duration, mimeType, title, tempUpload } = req.body;
 
     const entry = chunkStore.get(uploadId);
     if (!entry) return res.status(404).json({ error: 'Upload not found or expired' });
     if (entry.userId !== req.user.id) return res.status(403).json({ error: 'Forbidden' });
 
-    // Plan limit checks before assembling
     const userDoc = await User.findById(req.user.id);
-    const assembledSize = entry.chunks.reduce((n, c) => n + (c ? c.length * 0.75 : 0), 0); // rough base64 decode size
-    const check = await checkCreateLimits(req.user.id, userDoc, duration || 0, assembledSize);
+    const check = await checkCreateLimits(req.user.id, userDoc, duration || 0, 0);
     if (!check.ok) {
       chunkStore.delete(uploadId);
       return res.status(check.status).json({ error: check.error, code: check.code });
     }
 
-    const missing = entry.chunks.findIndex(c => c === null);
-    if (missing !== -1) return res.status(400).json({ error: `Missing chunk ${missing}` });
+    // Assemble: array mode (fixed/mobile) vs object mode (streaming/web)
+    const chunks = entry.chunks;
+    let base64Data;
+    if (Array.isArray(chunks)) {
+      const missing = chunks.findIndex(c => c === null);
+      if (missing !== -1) return res.status(400).json({ error: `Missing chunk ${missing}` });
+      base64Data = chunks.join('');
+    } else {
+      const sorted = Object.keys(chunks).map(Number).sort((a, b) => a - b);
+      base64Data = sorted.map(k => chunks[k]).join('');
+    }
 
-    chunkStore.delete(uploadId); // free memory immediately
+    chunkStore.delete(uploadId);
 
-    const base64Data = entry.chunks.join('').replace(/^data:[^,]+,/, '');
-    const audioBuffer = Buffer.from(base64Data, 'base64');
+    const audioBuffer = Buffer.from(base64Data.replace(/^data:[^,]+,/, ''), 'base64');
     console.log('[finalize-upload] Assembled buffer size:', audioBuffer.length);
 
+    const storageCheck = await checkCreateLimits(req.user.id, userDoc, duration || 0, tempUpload ? 0 : audioBuffer.length);
+    if (!storageCheck.ok) {
+      return res.status(storageCheck.status).json({ error: storageCheck.error, code: storageCheck.code });
+    }
+
     let audioInfo = { audioKey: null, audioUrl: null, audioSize: 0 };
-    if (process.env.R2_ACCESS_KEY_ID) {
-      const uploaded = await uploadAudio(audioBuffer, req.user.id, mimeType || 'audio/wav');
+    if (process.env.R2_ACCESS_KEY_ID && !tempUpload) {
+      const uploaded = await uploadAudio(audioBuffer, req.user.id, mimeType || 'audio/webm');
       audioInfo = { audioKey: uploaded.key, audioUrl: uploaded.url, audioSize: uploaded.size };
-      console.log('[finalize-upload] R2 upload success:', audioInfo.audioKey);
+      console.log('[finalize-upload] R2 upload:', audioInfo.audioKey);
     }
 
     const finalTitle = title || `Recording ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}`;
+    const limits = getPlanLimits(userDoc);
+    const inlineBuffer = tempUpload ? audioBuffer : null;
+    const willTranscribe = (audioInfo.audioKey || inlineBuffer) && (process.env.OPENAI_API_KEY || process.env.SARVAM_API_KEY);
 
     const recording = await Recording.create({
       user: req.user.id,
       title: finalTitle,
       ...audioInfo,
-      audioMimeType: mimeType || 'audio/wav',
+      audioMimeType: mimeType || 'audio/webm',
       duration: duration || 0,
       transcript: '',
-      status: 'pending',
+      status: willTranscribe ? 'pending' : 'transcribed',
     });
 
     res.status(201).json({ recording: recording.toJSON() });
+
+    if (willTranscribe) {
+      transcribeInBackground(recording._id, audioInfo.audioKey, inlineBuffer, mimeType || 'audio/webm', userDoc, limits)
+        .catch(err => console.error('[finalize-upload BG]', err));
+    }
   } catch (error) {
     console.error('[finalize-upload] Error:', error);
-    res.status(500).json({ error: 'Failed to finalize upload' });
+    if (!res.headersSent) res.status(500).json({ error: 'Failed to finalize upload' });
   }
 });
 // ────────────────────────────────────────────────────────────────────────────
