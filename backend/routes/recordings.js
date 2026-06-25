@@ -412,8 +412,11 @@ const transcribeInBackground = async (recordingId, audioKey, inlineBuffer, mimeT
     // the user can still access it and retry manually.
     const isCorruptAudio = /moov atom|invalid.*corrupt|corrupt.*audio|ffprobe exited|ffmpeg exited/i.test(error.message);
     if (isCorruptAudio) {
-      console.warn(`[BG ${recordingId}] Audio file incomplete/corrupt — saving with empty transcript`);
-      await Recording.findByIdAndUpdate(recordingId, { status: 'transcribed', transcript: '' }).catch(() => {});
+      console.warn(`[BG ${recordingId}] Audio file incomplete/corrupt — saving with placeholder transcript`);
+      await Recording.findByIdAndUpdate(recordingId, {
+        status: 'transcribed',
+        transcript: '[Audio recording was incomplete or corrupted and could not be transcribed. Please re-record.]'
+      }).catch(() => {});
     } else {
       await Recording.findByIdAndUpdate(recordingId, { status: 'failed' }).catch(() => {});
     }
@@ -633,10 +636,10 @@ router.post('/:id/transcribe', async (req, res) => {
       const isCorruptAudio = /moov atom|invalid.*corrupt|corrupt.*audio|ffprobe exited|ffmpeg exited/i.test(transcribeError.message);
       if (isCorruptAudio) {
         console.warn('Transcription skipped — audio file is incomplete/corrupt (moov atom missing)');
-        recording.transcript = '';
+        recording.transcript = '[Audio recording was incomplete or corrupted and could not be transcribed. Please re-record.]';
         recording.status = 'transcribed';
         await recording.save();
-        return res.json({ transcript: '', duration: recording.duration, recording });
+        return res.json({ transcript: recording.transcript, duration: recording.duration, recording });
       }
       console.error('Transcription error:', transcribeError.message);
       recording.status = 'failed';
