@@ -193,21 +193,22 @@ router.post('/finalize-upload', async (req, res) => {
       return res.status(check.status).json({ error: check.error, code: check.code });
     }
 
-    // Assemble: array mode (fixed/mobile) vs object mode (streaming/web)
+    // Assemble: decode each chunk independently then concatenate.
+    // Joining base64 strings first causes Buffer.from() to stop at the first "=="
+    // padding character — which appears at the end of every chunk whose byte-length
+    // is not divisible by 3 (e.g. Java's 256 KB chunks: 262144 = 3×87381+1).
     const chunks = entry.chunks;
-    let base64Data;
+    let audioBuffer;
     if (Array.isArray(chunks)) {
       const missing = chunks.findIndex(c => c === null);
       if (missing !== -1) return res.status(400).json({ error: `Missing chunk ${missing}` });
-      base64Data = chunks.join('');
+      audioBuffer = Buffer.concat(chunks.map(c => Buffer.from((c || '').replace(/^data:[^,]+,/, ''), 'base64')));
     } else {
       const sorted = Object.keys(chunks).map(Number).sort((a, b) => a - b);
-      base64Data = sorted.map(k => chunks[k]).join('');
+      audioBuffer = Buffer.concat(sorted.map(k => Buffer.from((chunks[k] || '').replace(/^data:[^,]+,/, ''), 'base64')));
     }
 
     chunkStore.delete(uploadId);
-
-    const audioBuffer = Buffer.from(base64Data.replace(/^data:[^,]+,/, ''), 'base64');
     const numChunks = Array.isArray(chunks) ? chunks.length : Object.keys(chunks).length;
     const freeMB = freeSpaceBytes != null && freeSpaceBytes >= 0 ? (freeSpaceBytes / 1024 / 1024).toFixed(1) + ' MB' : 'unknown';
     console.log(`[finalize-upload] Assembled buffer size: ${audioBuffer.length} bytes (${numChunks} chunks, mimeType: ${mimeType}, clientReportedDuration: ${duration}s, deviceFileSize: ${clientReportedSize ?? 'unknown'}, deviceFreeSpace: ${freeMB})`);
