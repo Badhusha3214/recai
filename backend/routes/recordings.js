@@ -237,7 +237,7 @@ router.post('/finalize-upload', async (req, res) => {
       audioMimeType: mimeType || 'audio/webm',
       duration: duration || 0,
       transcript: '',
-      status: willTranscribe ? 'pending' : 'transcribed',
+      status: willTranscribe ? 'transcribing' : 'transcribed',
     });
 
     res.status(201).json({ recording: recording.toJSON() });
@@ -507,7 +507,7 @@ router.post('/', async (req, res) => {
       audioMimeType: mimeType || 'audio/webm',
       duration: duration || 0,
       transcript: transcript || '',
-      status: willTranscribe ? 'pending' : 'transcribed',
+      status: willTranscribe ? 'transcribing' : 'transcribed',
     });
 
     // Respond immediately — transcription runs in the background
