@@ -157,11 +157,24 @@ export const transcribeAudioSarvam = async (audioBuffer, mimeType = 'audio/webm'
       console.log(`[Sarvam] Audio too long (${audioDuration.toFixed(1)}s), splitting into ${CHUNK_DURATION}s chunks...`);
       const chunks = await splitAudioIntoChunks(compressedPath, tempDir);
 
+      // Detect language from the first chunk, then lock it for all subsequent chunks.
+      // Without this, Sarvam re-detects per chunk and can flip between languages
+      // (e.g. en-IN → ml-IN → bn-IN), producing garbage text for misdetected chunks.
+      let lockedLang = languageCode;
+
       for (let i = 0; i < chunks.length; i++) {
-        console.log(`[Sarvam] Transcribing chunk ${i + 1}/${chunks.length}...`);
-        const result = await transcribeSarvamChunk(chunks[i].path, languageCode);
-        fullText += (fullText ? ' ' : '') + (result.transcript || result.text || '');
-        if (!detectedLanguage) detectedLanguage = result.language_code || languageCode;
+        console.log(`[Sarvam] Transcribing chunk ${i + 1}/${chunks.length} (lang: ${lockedLang || 'auto'})...`);
+        const result = await transcribeSarvamChunk(chunks[i].path, lockedLang);
+        const chunkText = (result.transcript || result.text || '').trim();
+
+        // Lock detected language after first chunk so all chunks share the same model path
+        if (!lockedLang && result.language_code) {
+          lockedLang = result.language_code;
+          console.log(`[Sarvam] Locked language to ${lockedLang} after chunk 1`);
+        }
+        if (!detectedLanguage) detectedLanguage = lockedLang || languageCode;
+
+        if (chunkText) fullText += (fullText ? ' ' : '') + chunkText;
       }
     }
 
