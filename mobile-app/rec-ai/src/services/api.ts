@@ -281,11 +281,12 @@ class ApiService {
     mimeType: string;
     title?: string;
     totalBytes?: number;
+    freeSpaceBytes?: number;
     tempUpload?: boolean;
     readChunk: (offset: number, size: number) => Promise<{ base64: string; bytesRead: number; done: boolean }>;
     onProgress?: (percent: number) => void;
   }): Promise<Recording> {
-    const { duration, mimeType, title, totalBytes = 0, tempUpload = false, readChunk, onProgress } = params;
+    const { duration, mimeType, title, totalBytes = 0, freeSpaceBytes = -1, tempUpload = false, readChunk, onProgress } = params;
     const CHUNK_BYTES = 256 * 1024; // 256KB → ~341KB base64, uploads fast even on 2G/3G
     const totalChunks = totalBytes > 0 ? Math.ceil(totalBytes / CHUNK_BYTES) : undefined;
     const uploadId = `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
@@ -333,7 +334,7 @@ class ApiService {
 
     const { data } = await this.api.post<{ recording: Recording }>(
       '/recordings/finalize-upload',
-      { uploadId, duration, mimeType, title, audioSize: totalBytes, tempUpload },
+      { uploadId, duration, mimeType, title, audioSize: totalBytes, freeSpaceBytes, tempUpload },
       { timeout: 120000 },
     );
 

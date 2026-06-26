@@ -582,6 +582,7 @@ async function stopRecording() {
     try {
       const result = await NativeFileRecorder.stop();
       await stopBgService(); // stop AFTER we have the audio data
+      console.log(`[NativeRecorder] stop() result: size=${(result as any).size} bytes, durationMs=${(result as any).durationMs}, freeSpaceBytes=${(result as any).freeSpaceBytes}`);
       nativeRecordingFile.value = result;
       audioBlob.value = null;
       audioUrl.value = Capacitor.convertFileSrc(result.path);
@@ -683,10 +684,12 @@ async function saveRecording() {
         uploadProgress.value = 0;
         processingStatus.value = 'Uploading audio... 0%';
         const file = nativeRecordingFile.value;
+        const freeSpaceBytes = (file as any).freeSpaceBytes ?? -1;
         recording = await recordingsStore.createRecordingFromChunks({
           duration,
           mimeType,
           totalBytes: file.size,
+          freeSpaceBytes,
           tempUpload: !cloudSync,
           readChunk: (offset, size) => NativeFileRecorder.readChunk({ path: file.path, offset, size }),
           onProgress: (pct) => {

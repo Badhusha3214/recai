@@ -79,6 +79,19 @@ public class NativeFileRecorderPlugin extends Plugin {
                 return;
             }
 
+            // Delete stale temp files from previous sessions to free cache space.
+            File[] stale = dir.listFiles();
+            if (stale != null) {
+                for (File f : stale) f.delete();
+            }
+
+            // Require at least 50 MB free to avoid write failures mid-recording.
+            long freeBytes = dir.getFreeSpace();
+            if (freeBytes < 50L * 1024 * 1024) {
+                call.reject("Not enough storage space to record (" + (freeBytes / 1024 / 1024) + " MB free). Please free up space and try again.");
+                return;
+            }
+
             currentFile = File.createTempFile("recording_", ".m4a", dir);
             recorder = buildRecorder(currentFile);
             recorder.prepare();
@@ -178,7 +191,7 @@ public class NativeFileRecorderPlugin extends Plugin {
             finishedFile.delete();
             releaseRecorder();
             currentFile = null;
-            call.reject("Recording was too short or could not be saved", error);
+            call.reject("Recording failed: " + (error.getMessage() != null ? error.getMessage() : "MediaRecorder.stop() threw"), error);
             return;
         } finally {
             releaseRecorder();
@@ -198,7 +211,9 @@ public class NativeFileRecorderPlugin extends Plugin {
             try { Thread.sleep(100); } catch (InterruptedException ignored) {}
         }
 
-        call.resolve(fileResult(finishedFile, durationMs));
+        JSObject result = fileResult(finishedFile, durationMs);
+        result.put("freeSpaceBytes", finishedFile.getParentFile() != null ? finishedFile.getParentFile().getFreeSpace() : -1L);
+        call.resolve(result);
     }
 
     @PluginMethod
