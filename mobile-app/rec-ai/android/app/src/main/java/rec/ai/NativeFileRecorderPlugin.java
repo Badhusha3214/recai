@@ -236,18 +236,26 @@ public class NativeFileRecorderPlugin extends Plugin {
         int safeSize = Math.max(1, Math.min(size, 2 * 1024 * 1024));
         byte[] buffer = new byte[safeSize];
 
-        try (FileInputStream input = new FileInputStream(file)) {
-            long skipped = input.skip(Math.max(0, offset));
-            while (skipped < offset) {
-                long extra = input.skip(offset - skipped);
-                if (extra <= 0) break;
-                skipped += extra;
+        // Use RandomAccessFile + seek() for reliable absolute positioning.
+        // FileInputStream.skip() can behave unexpectedly on some Android/F2FS devices.
+        try (java.io.RandomAccessFile raf = new java.io.RandomAccessFile(file, "r")) {
+            long fileLen = raf.length();
+            if (offset >= fileLen) {
+                // Past EOF — signal done with 0 bytes
+                JSObject result = new JSObject();
+                result.put("base64", "");
+                result.put("bytesRead", 0);
+                result.put("nextOffset", offset);
+                result.put("done", true);
+                result.put("fileSize", fileLen);
+                call.resolve(result);
+                return;
             }
+            raf.seek(offset);
 
-            // Read until buffer is full or EOF — single read() is not guaranteed to fill buffer
             int totalRead = 0;
             while (totalRead < safeSize) {
-                int n = input.read(buffer, totalRead, safeSize - totalRead);
+                int n = raf.read(buffer, totalRead, safeSize - totalRead);
                 if (n < 0) break;
                 totalRead += n;
             }
@@ -255,15 +263,14 @@ public class NativeFileRecorderPlugin extends Plugin {
             byte[] exact = new byte[totalRead];
             System.arraycopy(buffer, 0, exact, 0, totalRead);
 
-            // done = we hit EOF before filling the buffer (don't trust file.length() — it can be stale)
-            boolean done = totalRead < safeSize;
+            boolean done = (offset + totalRead) >= fileLen;
 
             JSObject result = new JSObject();
             result.put("base64", Base64.encodeToString(exact, Base64.NO_WRAP));
             result.put("bytesRead", totalRead);
             result.put("nextOffset", offset + totalRead);
             result.put("done", done);
-            result.put("fileSize", file.length());
+            result.put("fileSize", fileLen);
             call.resolve(result);
         } catch (IOException error) {
             call.reject("Failed to read recording chunk", error);

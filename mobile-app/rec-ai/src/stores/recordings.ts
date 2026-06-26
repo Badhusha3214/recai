@@ -92,6 +92,7 @@ export const useRecordingsStore = defineStore('recordings', () => {
     mimeType: string;
     title?: string;
     totalBytes?: number;
+    freeSpaceBytes?: number;
     tempUpload?: boolean;
     readChunk: (offset: number, size: number) => Promise<{ base64: string; bytesRead: number; done: boolean }>;
     onProgress?: (percent: number) => void;

@@ -169,6 +169,7 @@ router.post('/upload-chunk', async (req, res) => {
 
     if (entry.userId !== req.user.id) return res.status(403).json({ error: 'Forbidden' });
     entry.chunks[chunkIndex] = chunk;
+    console.log(`[upload-chunk] id=${uploadId} idx=${chunkIndex}/${totalChunks ?? '?'} len=${chunk?.length ?? 'null'}`);
     res.json({ ok: true, received: chunkIndex });
   } catch (error) {
     console.error('Chunk upload error:', error);
