@@ -54,6 +54,12 @@ const routes: Array<RouteRecordRaw> = [
     meta: { auth: true }
   },
   {
+    path: '/search',
+    name: 'Search',
+    component: () => import('@/views/SearchPage.vue'),
+    meta: { auth: true }
+  },
+  {
     path: '/recording/:id',
     name: 'RecordingDetail',
     component: () => import('@/views/RecordingDetailPage.vue'),

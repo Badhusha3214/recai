@@ -579,6 +579,12 @@ async function stopRecording() {
     isRecording.value = false;
     voiceRecorderListener.value?.remove();
     voiceRecorderListener.value = null;
+    // Show processing overlay immediately — NativeFileRecorder.stop() can take up
+    // to 5 s waiting for the moov atom. Without this the page snaps back to the
+    // idle "New Recording" state during that wait.
+    processingTitle.value = 'Finishing';
+    processingStatus.value = 'Finishing recording...';
+    isProcessing.value = true;
     try {
       const result = await NativeFileRecorder.stop();
       await stopBgService(); // stop AFTER we have the audio data
@@ -608,10 +614,12 @@ async function stopRecording() {
       if (autoSave.value) {
         await saveRecording();
       } else {
+        isProcessing.value = false;
         showPreview.value = true;
       }
     } catch (err: any) {
       await stopBgService(); // ensure service is stopped even on error
+      isProcessing.value = false;
       error.value = err.message || 'Failed to finish recording';
     }
     return;

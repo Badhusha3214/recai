@@ -4,11 +4,7 @@
       <div class="profile-page">
         <!-- Header -->
         <header class="page-header">
-          <button class="back-btn" @click="router.back()">
-            <ion-icon :icon="chevronBackOutline"></ion-icon>
-          </button>
           <h1>Profile</h1>
-          <div style="width: 42px;"></div>
         </header>
 
         <!-- Profile Hero -->
@@ -542,41 +538,22 @@ function openPricing() {
 
 <style scoped>
 .profile-page {
-  padding: var(--page-top) 20px 40px;
+  padding: var(--page-top) 20px calc(96px + env(safe-area-inset-bottom, 0px));
 }
 
 /* Header */
 .page-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   margin-bottom: 8px;
 }
 
 .page-header h1 {
-  font-size: 18px;
-  font-weight: 700;
+  font-size: 22px;
+  font-weight: 800;
   color: var(--app-text);
   margin: 0;
 }
-
-.back-btn {
-  width: 42px;
-  height: 42px;
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--app-border);
-  background: var(--app-surface);
-  color: var(--app-text);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  box-shadow: var(--shadow-xs);
-  transition: all var(--transition-fast);
-}
-
-.back-btn:active { transform: scale(0.93); }
-.back-btn ion-icon { font-size: 22px; }
 
 /* Profile Hero */
 .profile-hero {

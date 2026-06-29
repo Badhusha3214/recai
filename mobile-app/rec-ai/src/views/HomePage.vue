@@ -73,23 +73,16 @@
           </div>
         </section>
 
-        <!-- Recording Limit Bar (free users only) -->
-        <div v-if="showLimit" class="limit-bar-wrap" @click="router.push('/pricing')">
-          <div class="limit-bar-header">
-            <span class="limit-bar-label">
-              <ion-icon :icon="micOutline"></ion-icon>
-              Recordings this month
-            </span>
-            <span class="limit-bar-count" :style="{ color: limitColor }">
-              {{ limitUsed }} / {{ limitMax }}
-              <span v-if="limitPct >= 100"> · Limit reached</span>
-              <span v-else-if="limitPct >= 70"> · Almost full</span>
-            </span>
+        <!-- Duration plan nudge (free users only) -->
+        <div v-if="showDurationNudge" class="duration-nudge" @click="router.push('/pricing')">
+          <div class="duration-nudge-left">
+            <ion-icon :icon="timeOutline" class="duration-nudge-icon" />
+            <div>
+              <p class="duration-nudge-title">Free plan · up to {{ maxDurationMins }} min per recording</p>
+              <p class="duration-nudge-sub">Upgrade for recordings up to 2 hours</p>
+            </div>
           </div>
-          <div class="limit-bar-track">
-            <div class="limit-bar-fill" :style="{ width: limitPct + '%', background: limitColor }"></div>
-          </div>
-          <p v-if="limitPct >= 70" class="limit-bar-cta">Upgrade to Pro for unlimited recordings →</p>
+          <ion-icon :icon="chevronForwardOutline" class="duration-nudge-arrow" />
         </div>
 
         <!-- Recent Recordings -->
@@ -156,86 +149,66 @@
 
     </ion-content>
 
-    <!-- Privacy Policy Consent Modal -->
-    <transition name="pp-slide">
-      <div v-if="showPrivacyModal" class="pp-backdrop" @click.self="() => {}">
-        <div class="pp-sheet">
-          <div class="pp-handle"></div>
+    <!-- Privacy Policy Consent Modal — teleported to body to escape ion-page stacking context -->
+    <Teleport to="body">
+      <transition name="pp-slide">
+        <div v-if="showPrivacyModal" class="pp-backdrop" @click.self="() => {}">
+          <div class="pp-sheet">
+            <div class="pp-handle"></div>
 
-          <div class="pp-header">
-            <div class="pp-icon">
-              <ion-icon :icon="shieldCheckmarkOutline"></ion-icon>
+            <div class="pp-header">
+              <div class="pp-icon">
+                <ion-icon :icon="shieldCheckmarkOutline"></ion-icon>
+              </div>
+              <div>
+                <h2 class="pp-title">Privacy &amp; Terms</h2>
+                <p class="pp-subtitle">Please review before continuing</p>
+              </div>
             </div>
-            <div>
-              <h2 class="pp-title">Privacy &amp; Terms</h2>
-              <p class="pp-subtitle">Please review before continuing</p>
+
+            <div class="pp-body">
+              <p class="pp-intro">
+                Echobits collects your audio recordings and transcriptions to deliver its core features.
+                Your data is stored securely and never sold to third parties.
+              </p>
+
+              <ul class="pp-list">
+                <li>
+                  <ion-icon :icon="micOutline"></ion-icon>
+                  <span><strong>Audio &amp; transcription</strong> — stored on Cloudflare R2 and processed by OpenAI Whisper for speech-to-text.</span>
+                </li>
+                <li>
+                  <ion-icon :icon="sparklesOutline"></ion-icon>
+                  <span><strong>AI summaries</strong> — transcripts are sent to Google Gemini to generate insights.</span>
+                </li>
+                <li>
+                  <ion-icon :icon="personOutline"></ion-icon>
+                  <span><strong>Account data</strong> — name &amp; email stored in MongoDB Atlas.</span>
+                </li>
+                <li>
+                  <ion-icon :icon="trashOutline"></ion-icon>
+                  <span><strong>Your rights</strong> — delete your account and all data at any time from Profile settings.</span>
+                </li>
+              </ul>
+
+              <p class="pp-contact">
+                Questions? <a href="mailto:no.reply.Echobits@gmail.com">no.reply.Echobits@gmail.com</a>
+              </p>
             </div>
-          </div>
 
-          <div class="pp-body">
-            <p class="pp-intro">
-              Echobits collects your audio recordings and transcriptions to deliver its core features.
-              Your data is stored securely and never sold to third parties.
-            </p>
-
-            <ul class="pp-list">
-              <li>
-                <ion-icon :icon="micOutline"></ion-icon>
-                <span><strong>Audio &amp; transcription</strong> — stored on Cloudflare R2 and processed by OpenAI Whisper for speech-to-text.</span>
-              </li>
-              <li>
-                <ion-icon :icon="sparklesOutline"></ion-icon>
-                <span><strong>AI summaries</strong> — transcripts are sent to Google Gemini to generate insights.</span>
-              </li>
-              <li>
-                <ion-icon :icon="personOutline"></ion-icon>
-                <span><strong>Account data</strong> — name &amp; email stored in MongoDB Atlas.</span>
-              </li>
-              <li>
-                <ion-icon :icon="trashOutline"></ion-icon>
-                <span><strong>Your rights</strong> — delete your account and all data at any time from Profile settings.</span>
-              </li>
-            </ul>
-
-            <p class="pp-contact">
-              Questions? <a href="mailto:no.reply.Echobits@gmail.com">no.reply.Echobits@gmail.com</a>
-            </p>
-          </div>
-
-          <div class="pp-actions">
-            <button class="pp-btn-decline" @click="declinePrivacy">Decline</button>
-            <button class="pp-btn-accept" @click="acceptPrivacy">I Agree &amp; Continue</button>
+            <div class="pp-actions">
+              <button class="pp-btn-decline" @click="declinePrivacy">Decline</button>
+              <button class="pp-btn-accept" @click="acceptPrivacy">I Agree &amp; Continue</button>
+            </div>
           </div>
         </div>
-      </div>
-    </transition>
+      </transition>
+    </Teleport>
 
-    <!-- Bottom Navigation sits at ion-page level so it is never inside the scroll container -->
-    <div class="bottom-nav">
-      <button class="nav-item active" @click="router.push('/home')">
-        <ion-icon :icon="homeOutline"></ion-icon>
-        <span>Home</span>
-      </button>
-      <button class="nav-item" @click="router.push('/recordings')">
-        <ion-icon :icon="listOutline"></ion-icon>
-        <span>Library</span>
-      </button>
-      <button class="nav-record" @click="router.push('/record')">
-        <ion-icon :icon="mic"></ion-icon>
-      </button>
-      <button class="nav-item" @click="router.push('/recordings')">
-        <ion-icon :icon="searchOutline"></ion-icon>
-        <span>Search</span>
-      </button>
-      <button class="nav-item" @click="router.push('/profile')">
-        <ion-icon :icon="personOutline"></ion-icon>
-        <span>Profile</span>
-      </button>
-    </div>
-
-    <!-- Onboarding overlay -->
-    <transition name="ob-fade">
-      <div v-if="showOnboarding" class="ob-backdrop">
+    <!-- Onboarding overlay — teleported to body to escape ion-page stacking context -->
+    <Teleport to="body">
+      <transition name="ob-fade">
+        <div v-if="showOnboarding" class="ob-backdrop">
         <div class="ob-sheet">
           <div class="ob-slide-wrap">
             <transition name="ob-slide" mode="out-in">
@@ -262,7 +235,8 @@
           <button v-if="onboardingStep < onboardingSlides.length - 1" class="ob-skip-btn" @click="finishOnboarding">Skip</button>
         </div>
       </div>
-    </transition>
+      </transition>
+    </Teleport>
 
   </ion-page>
 </template>
@@ -274,8 +248,7 @@ import { IonPage, IonContent, IonIcon, IonRefresher, IonRefresherContent, onIonV
 import {
   mic, micOutline, arrowForwardOutline, layersOutline, checkmarkDoneOutline,
   timeOutline, documentTextOutline, checkmarkCircleOutline, ellipseOutline,
-  addOutline, homeOutline, listOutline, searchOutline, personOutline,
-  shieldCheckmarkOutline, sparklesOutline, trashOutline,
+  addOutline, shieldCheckmarkOutline, sparklesOutline, trashOutline,
   languageOutline, flashOutline, chevronForwardOutline
 } from 'ionicons/icons';
 import { useAuthStore } from '@/stores/auth';
@@ -321,6 +294,7 @@ const onboardingSlides = [
 ];
 
 async function checkOnboarding() {
+  if (localStorage.getItem('onboardingSeen') === 'true') return;
   if (auth.user?.onboardingSeen) return;
   showOnboarding.value = true;
 }
@@ -335,26 +309,20 @@ async function nextOnboardingStep() {
 
 async function finishOnboarding() {
   showOnboarding.value = false;
+  localStorage.setItem('onboardingSeen', 'true');
   auth.updateProfile({ onboardingSeen: true }).catch(() => {});
 }
 // ───────────────────────────────────────────────────────────────────────────
 
-// ── Recording limit ──────────────────────────────────────────────────────────
-const limitUsed  = ref(0);
-const limitMax   = ref<number | null>(null);
-const showLimit  = computed(() => !isPaid.value && limitMax.value !== null);
-const limitPct   = computed(() => limitMax.value ? Math.min(100, Math.round(limitUsed.value / limitMax.value * 100)) : 0);
-const limitColor = computed(() => {
-  if (limitPct.value >= 100) return '#ef4444';
-  if (limitPct.value >= 70)  return '#f59e0b';
-  return 'var(--app-primary)';
-});
+// ── Duration plan nudge ──────────────────────────────────────────────────────
+const maxDurationSecs = ref(1200);
+const maxDurationMins = computed(() => Math.round(maxDurationSecs.value / 60));
+const showDurationNudge = computed(() => !isPaid.value);
 
 async function fetchLimits() {
   try {
     const data = await api.getLimits();
-    limitUsed.value = data.usage.recordingsThisMonth;
-    limitMax.value  = data.limits.recordingsPerMonth;
+    maxDurationSecs.value = data.limits.maxDurationSecs;
   } catch { /* ignore */ }
 }
 
@@ -699,57 +667,49 @@ function getStatusLabel(status: string) {
 
 <style scoped>
 .home-page {
-  /* padding: calc(20px + env(safe-area-inset-top, 0px)) 20px 100px; */
-  padding: var(--page-top) 20px 100px;
+  padding: var(--page-top) 20px calc(96px + env(safe-area-inset-bottom, 0px));
 }
 
 /* Limit Bar */
-.limit-bar-wrap {
+.duration-nudge {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   background: var(--app-surface);
   border: 1px solid var(--app-border);
   border-radius: var(--radius-xl);
-  padding: 14px 16px;
+  padding: 12px 14px;
   margin-bottom: 20px;
   cursor: pointer;
   transition: all var(--transition-fast);
   box-shadow: var(--shadow-xs);
 }
-.limit-bar-wrap:active { transform: scale(0.98); }
-.limit-bar-header {
+.duration-nudge:active { transform: scale(0.98); }
+.duration-nudge-left {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  margin-bottom: 8px;
+  gap: 10px;
 }
-.limit-bar-label {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--app-text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.4px;
-}
-.limit-bar-label ion-icon { font-size: 13px; }
-.limit-bar-count { font-size: 12px; font-weight: 700; }
-.limit-bar-track {
-  height: 6px;
-  background: var(--app-border);
-  border-radius: var(--radius-full);
-  overflow: hidden;
-}
-.limit-bar-fill {
-  height: 100%;
-  border-radius: var(--radius-full);
-  transition: width 0.6s ease-out;
-}
-.limit-bar-cta {
-  font-size: 11px;
+.duration-nudge-icon {
+  font-size: 20px;
   color: var(--app-primary);
+  flex-shrink: 0;
+}
+.duration-nudge-title {
+  font-size: 13px;
   font-weight: 600;
-  margin: 6px 0 0;
-  text-align: right;
+  color: var(--app-text);
+  margin: 0 0 2px;
+}
+.duration-nudge-sub {
+  font-size: 11px;
+  color: var(--app-text-muted);
+  margin: 0;
+}
+.duration-nudge-arrow {
+  font-size: 16px;
+  color: var(--app-text-muted);
+  flex-shrink: 0;
 }
 
 /* Header */
@@ -1261,67 +1221,4 @@ function getStatusLabel(status: string) {
   color: var(--ion-color-warning);
 }
 
-/* Bottom Navigation */
-.bottom-nav {
-  display: flex;
-  align-items: center;
-  justify-content: space-around;
-  padding: 8px 12px;
-  /* padding-bottom: calc(50px + env(safe-area-inset-bottom, 0px)); */
-  padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px));
-  background: var(--app-surface);
-  border-top: 1px solid var(--app-border);
-  backdrop-filter: blur(20px);
-  flex-shrink: 0;
-}
-
-.nav-item {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 3px;
-  padding: 6px 12px;
-  background: none;
-  border: none;
-  cursor: pointer;
-  color: var(--app-text-muted);
-  transition: color var(--transition-fast);
-}
-
-.nav-item.active {
-  color: var(--app-primary);
-}
-
-.nav-item ion-icon {
-  font-size: 22px;
-}
-
-.nav-item span {
-  font-size: 10px;
-  font-weight: 600;
-}
-
-.nav-record {
-  width: 52px;
-  height: 52px;
-  border-radius: 50%;
-  border: none;
-  background: var(--app-gradient);
-  color: white;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  margin-top: -24px;
-  box-shadow: var(--shadow-primary);
-  transition: transform var(--transition-spring);
-}
-
-.nav-record:active {
-  transform: scale(0.9);
-}
-
-.nav-record ion-icon {
-  font-size: 24px;
-}
 </style>

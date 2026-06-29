@@ -1,7 +1,7 @@
 export const PLAN_LIMITS = {
   free: {
-    recordingsPerMonth: 3,
-    maxDurationSecs: 1200,            // 20 min
+    recordingsPerMonth: null,         // unlimited recordings; duration per session is the gate
+    maxDurationSecs: 1200,            // 20 min per recording
     maxStorageBytes: 1_073_741_824,   // 1 GB
     languageTier: 'basic_indian',     // English + Malayalam
     indianLanguages: true,            // includes Malayalam via Sarvam
@@ -11,8 +11,8 @@ export const PLAN_LIMITS = {
     priorityProcessing: false,
   },
   starter: {
-    recordingsPerMonth: 15,
-    maxDurationSecs: 2700,            // 45 min
+    recordingsPerMonth: null,         // unlimited
+    maxDurationSecs: 2700,            // 45 min per recording
     maxStorageBytes: 3_221_225_472,   // 3 GB
     languageTier: 'basic_indian',     // English + Hindi + Malayalam
     indianLanguages: true,
@@ -22,8 +22,8 @@ export const PLAN_LIMITS = {
     priorityProcessing: false,
   },
   pro: {
-    recordingsPerMonth: 40,
-    maxDurationSecs: 7200,            // 2 hours
+    recordingsPerMonth: null,         // unlimited
+    maxDurationSecs: 7200,            // 2 hours per recording
     maxStorageBytes: 10_737_418_240,  // 10 GB
     languageTier: 'extended',         // 15+ languages
     indianLanguages: true,

@@ -48,6 +48,15 @@ export interface Recording {
   updatedAt: string;
 }
 
+export interface SearchResult {
+  _id: string;
+  title: string;
+  duration: number;
+  status: Recording['status'];
+  createdAt: string;
+  snippet: string;
+}
+
 export interface AuthResponse {
   token: string;
   user: User;
@@ -150,6 +159,11 @@ class ApiService {
   async getRecordings(): Promise<Recording[]> {
     const { data } = await this.api.get<{ recordings: Recording[] }>('/recordings');
     return data.recordings;
+  }
+
+  async searchRecordings(q: string): Promise<SearchResult[]> {
+    const { data } = await this.api.get<{ results: SearchResult[] }>('/recordings/search', { params: { q } });
+    return data.results;
   }
 
   async getRecording(id: string): Promise<Recording> {
@@ -353,8 +367,8 @@ class ApiService {
 
   async getLimits(): Promise<{
     plan: string;
-    usage: { recordingsThisMonth: number; storageUsedBytes: number };
-    limits: { recordingsPerMonth: number | null; maxDurationSecs: number; maxStorageBytes: number; meetingMinutes: boolean; actionItems: boolean; pdfExport: boolean };
+    usage: { storageUsedBytes: number };
+    limits: { maxDurationSecs: number; maxStorageBytes: number; meetingMinutes: boolean; actionItems: boolean; pdfExport: boolean };
   }> {
     const { data } = await this.api.get('/recordings/limits');
     return data;

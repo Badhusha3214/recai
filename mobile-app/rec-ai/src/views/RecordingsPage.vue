@@ -8,9 +8,6 @@
       <div class="recordings-page">
         <!-- Header -->
         <header class="page-header">
-          <button class="back-btn" @click="router.back()">
-            <ion-icon :icon="chevronBackOutline"></ion-icon>
-          </button>
           <h1>Library</h1>
           <span class="count-badge" v-if="recordings.length">{{ recordings.length }}</span>
         </header>
@@ -105,12 +102,7 @@
         </div>
       </div>
 
-      <!-- FAB -->
-      <ion-fab slot="fixed" vertical="bottom" horizontal="end" style="margin-bottom: 16px; margin-right: 16px;">
-        <ion-fab-button @click="router.push('/record')">
-          <ion-icon :icon="micOutline"></ion-icon>
-        </ion-fab-button>
-      </ion-fab>
+
 
       <!-- Delete Alert -->
       <ion-alert
@@ -128,11 +120,11 @@
 import { ref, computed } from 'vue';
 import { useRouter } from 'vue-router';
 import {
-  IonPage, IonContent, IonIcon, IonFab, IonFabButton,
+  IonPage, IonContent, IonIcon,
   IonRefresher, IonRefresherContent, IonAlert, toastController, onIonViewWillEnter
 } from '@ionic/vue';
 import {
-  chevronBackOutline, searchOutline, closeCircleOutline, micOutline,
+  searchOutline, closeCircleOutline, micOutline,
   documentTextOutline, shareOutline, trashOutline
 } from 'ionicons/icons';
 import { useRecordingsStore } from '@/stores/recordings';
@@ -259,7 +251,7 @@ function getStatusLabel(status: string) {
 
 <style scoped>
 .recordings-page {
-  padding: var(--page-top) 20px 100px;
+  padding: var(--page-top) 20px calc(96px + env(safe-area-inset-bottom, 0px));
 }
 
 /* Header */
@@ -269,24 +261,6 @@ function getStatusLabel(status: string) {
   gap: 12px;
   margin-bottom: 20px;
 }
-
-.back-btn {
-  width: 42px;
-  height: 42px;
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--app-border);
-  background: var(--app-surface);
-  color: var(--app-text);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  box-shadow: var(--shadow-xs);
-  transition: all var(--transition-fast);
-}
-
-.back-btn:active { transform: scale(0.93); }
-.back-btn ion-icon { font-size: 22px; }
 
 .page-header h1 {
   flex: 1;
@@ -608,9 +582,4 @@ function getStatusLabel(status: string) {
 .icon-btn ion-icon { font-size: 16px; }
 .icon-btn.danger:active { color: var(--ion-color-danger); background: rgba(239, 68, 68, 0.08); }
 
-/* FAB */
-ion-fab-button {
-  --background: var(--app-primary);
-  --box-shadow: var(--shadow-primary-lg);
-}
 </style>

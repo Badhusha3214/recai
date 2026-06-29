@@ -708,7 +708,7 @@ const comparison = computed(() => {
 const faqs = [
   {
     q: 'Is the free plan really free forever?',
-    a: 'Yes! The free plan is free forever with no credit card required. You get 3 recordings per month and basic AI features to explore what Echobit can do.',
+    a: 'Yes! The free plan is free forever with no credit card required. You get unlimited recordings (up to 20 min each) and basic AI features to explore what Echobit can do.',
   },
   {
     q: 'Can I change or cancel my plan anytime?',

@@ -50,7 +50,7 @@ const checkCreateLimits = async (userId, userDoc, durationSecs, incomingBytes) =
     const maxMins = Math.floor(limits.maxDurationSecs / 60);
     return {
       ok: false, status: 403,
-      error: `Recording is ${Math.ceil(durationSecs / 60)} min — exceeds the ${maxMins} min limit on your plan. Upgrade to Pro for up to 3 hours.`,
+      error: `Recording is ${Math.ceil(durationSecs / 60)} min — your plan allows up to ${maxMins} min per recording. Upgrade to record longer sessions.`,
       code: 'PLAN_LIMIT_DURATION',
     };
   }
@@ -260,19 +260,14 @@ router.get('/limits', async (req, res) => {
     const limits = await getEffectiveLimits(userDoc);
     const plan = getActivePlan(userDoc);
 
-    const [monthlyCount, storageUsed] = await Promise.all([
-      Recording.countDocuments({ user: req.user.id, createdAt: { $gte: startOfCurrentMonth() } }),
-      getUserStorageUsed(req.user.id),
-    ]);
+    const storageUsed = await getUserStorageUsed(req.user.id);
 
     res.json({
       plan,
       usage: {
-        recordingsThisMonth: monthlyCount,
         storageUsedBytes: storageUsed,
       },
       limits: {
-        recordingsPerMonth: limits.recordingsPerMonth,
         maxDurationSecs: limits.maxDurationSecs,
         maxStorageBytes: limits.maxStorageBytes,
         indianLanguages: limits.indianLanguages,
@@ -284,6 +279,46 @@ router.get('/limits', async (req, res) => {
   } catch (error) {
     console.error('Error fetching limits:', error);
     res.status(500).json({ error: 'Failed to fetch usage limits' });
+  }
+});
+
+// Search recordings by transcript / title content
+router.get('/search', async (req, res) => {
+  try {
+    const q = (req.query.q || '').trim();
+    if (!q || q.length < 2) return res.json({ results: [] });
+
+    const regex = new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+
+    const recordings = await Recording.find({
+      user: req.user.id,
+      $or: [
+        { transcript: regex },
+        { title: regex },
+      ],
+    })
+      .select('title duration status transcript createdAt')
+      .sort({ createdAt: -1 })
+      .limit(30)
+      .lean();
+
+    const results = recordings.map(rec => {
+      let snippet = '';
+      if (rec.transcript) {
+        const idx = rec.transcript.search(regex);
+        if (idx !== -1) {
+          const start = Math.max(0, idx - 80);
+          const end = Math.min(rec.transcript.length, idx + q.length + 80);
+          snippet = (start > 0 ? '…' : '') + rec.transcript.slice(start, end) + (end < rec.transcript.length ? '…' : '');
+        }
+      }
+      return { _id: rec._id, title: rec.title, duration: rec.duration, status: rec.status, createdAt: rec.createdAt, snippet };
+    });
+
+    res.json({ results });
+  } catch (error) {
+    console.error('Search error:', error);
+    res.status(500).json({ error: 'Search failed' });
   }
 });
 

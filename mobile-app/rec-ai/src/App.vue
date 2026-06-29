@@ -1,18 +1,25 @@
 <template>
   <ion-app>
     <ion-router-outlet />
+    <BottomNav v-if="showNav" />
   </ion-app>
 </template>
 
 <script setup lang="ts">
-import { onMounted, onUnmounted } from 'vue';
-import { useRouter } from 'vue-router';
+import { computed, onMounted, onUnmounted } from 'vue';
+import { useRouter, useRoute } from 'vue-router';
 import { IonApp, IonRouterOutlet, alertController } from '@ionic/vue';
+import BottomNav from '@/components/BottomNav.vue';
 import { App } from '@capacitor/app';
 import { useAuthStore } from '@/stores/auth';
 
 const router = useRouter();
+const route = useRoute();
 const authStore = useAuthStore();
+
+const showNav = computed(() =>
+  ['Home', 'Recordings', 'Search', 'Profile', 'RecordingDetail'].includes(route.name as string)
+);
 
 let backButtonHandler: any = null;
 let appStateHandler: any = null;
