@@ -1,7 +1,7 @@
 <template>
   <ion-page>
     <ion-content :fullscreen="true">
-      <ion-refresher slot="fixed" @ionRefresh="handleRefresh">
+      <ion-refresher @ionRefresh="handleRefresh">
         <ion-refresher-content></ion-refresher-content>
       </ion-refresher>
 
@@ -249,7 +249,7 @@ import {
   mic, micOutline, arrowForwardOutline, layersOutline, checkmarkDoneOutline,
   timeOutline, documentTextOutline, checkmarkCircleOutline, ellipseOutline,
   addOutline, shieldCheckmarkOutline, sparklesOutline, trashOutline,
-  languageOutline, flashOutline, chevronForwardOutline
+  languageOutline, flashOutline, chevronForwardOutline, personOutline
 } from 'ionicons/icons';
 import { useAuthStore } from '@/stores/auth';
 import { useRecordingsStore } from '@/stores/recordings';

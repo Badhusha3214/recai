@@ -33,6 +33,7 @@
 import { computed } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import { IonIcon } from '@ionic/vue';
+import { setNavSlideDir } from '@/utils/navDirection';
 import {
   home, homeOutline,
   list, listOutline,
@@ -74,7 +75,16 @@ const pillStyle = computed(() => {
   return { left: `${percent}%`, opacity: '1' };
 });
 
+const TAB_ORDER: Record<string, number> = { home: 0, recordings: 1, record: 2, search: 3, profile: 4 };
+
 function navigate(tab: typeof tabs[0]) {
+  const from = TAB_ORDER[activeTab.value] ?? -1;
+  const to   = TAB_ORDER[tab.name]       ?? -1;
+  if (from >= 0 && to >= 0 && to !== from) {
+    setNavSlideDir(to > from ? 'left' : 'right');
+  } else {
+    setNavSlideDir('none');
+  }
   router.push(tab.path);
 }
 </script>

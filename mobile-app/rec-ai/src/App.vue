@@ -1,6 +1,6 @@
 <template>
   <ion-app>
-    <ion-router-outlet />
+    <ion-router-outlet :animation="tabSlideAnimation" />
     <BottomNav v-if="showNav" />
   </ion-app>
 </template>
@@ -8,10 +8,11 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
-import { IonApp, IonRouterOutlet, alertController } from '@ionic/vue';
+import { IonApp, IonRouterOutlet, alertController, createAnimation } from '@ionic/vue';
 import BottomNav from '@/components/BottomNav.vue';
 import { App } from '@capacitor/app';
 import { useAuthStore } from '@/stores/auth';
+import { navSlideDir, setNavSlideDir } from '@/utils/navDirection';
 
 const router = useRouter();
 const route = useRoute();
@@ -33,6 +34,43 @@ async function showWelcomeToPro(plan: string) {
     cssClass: 'welcome-alert',
   });
   await alert.present();
+}
+
+function tabSlideAnimation(_baseEl: HTMLElement, opts: any) {
+  const dir = navSlideDir;
+  setNavSlideDir('none');
+
+  const DURATION = 260;
+  const EASE = 'cubic-bezier(0.25, 0.46, 0.45, 0.94)';
+
+  if (!opts.leavingEl) return createAnimation().duration(0);
+
+  if (dir === 'none') {
+    // Non-tab navigation — simple fade
+    return createAnimation()
+      .addElement(opts.enteringEl)
+      .fromTo('opacity', 0, 1)
+      .duration(180)
+      .easing('ease-out');
+  }
+
+  const enterFrom = dir === 'left' ? '100%' : '-100%';
+  const leaveTo   = dir === 'left' ? '-30%' : '30%';
+
+  return createAnimation().addAnimation([
+    createAnimation()
+      .addElement(opts.enteringEl)
+      .fromTo('transform', `translateX(${enterFrom})`, 'translateX(0)')
+      .fromTo('opacity', 0.85, 1)
+      .duration(DURATION)
+      .easing(EASE),
+    createAnimation()
+      .addElement(opts.leavingEl)
+      .fromTo('transform', 'translateX(0)', `translateX(${leaveTo})`)
+      .fromTo('opacity', 1, 0.85)
+      .duration(DURATION)
+      .easing(EASE),
+  ]);
 }
 
 onMounted(() => {

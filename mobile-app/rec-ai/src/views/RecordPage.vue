@@ -120,7 +120,6 @@
             </div>
 
             <p class="hint" v-if="isRecording">{{ isPaused ? 'Paused' : 'Recording...' }}</p>
-            <p class="hint" v-else-if="limitReached" style="color: var(--ion-color-medium);">{{ usageCount }}/{{ limitCount }} recordings used · <span style="color: var(--app-primary); font-weight: 700; cursor: pointer;" @click="router.push('/pricing')">Upgrade</span></p>
             <p class="hint" v-else>Tap to record</p>
             <p class="lang-notice" v-if="!isRecording && !limitReached">English is the only supported language in this version.<br> We appreciate your patience.</p>
 
@@ -235,13 +234,9 @@ const authStore = useAuthStore();
 const autoSave = computed(() => authStore.user?.autoSave !== false);
 
 // Plan limits
-const usageCount = ref(0);
-const limitCount = ref<number | null>(null);
 const maxDurationSecs = ref<number | null>(null);
 const planLabel = ref('Free');
-const limitReached = computed(() =>
-  limitCount.value !== null && usageCount.value >= limitCount.value
-);
+const limitReached = computed(() => false);
 const nearingLimit = computed(() =>
   maxDurationSecs.value !== null && recordingTime.value >= maxDurationSecs.value - 60
 );
@@ -252,8 +247,6 @@ const atLimit = computed(() =>
 onMounted(async () => {
   try {
     const data = await api.getLimits();
-    usageCount.value = data.usage.recordingsThisMonth;
-    limitCount.value = data.limits.recordingsPerMonth;
     maxDurationSecs.value = data.limits.maxDurationSecs ?? null;
     planLabel.value = data.plan.charAt(0).toUpperCase() + data.plan.slice(1);
   } catch {
