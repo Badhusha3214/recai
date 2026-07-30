@@ -6,7 +6,7 @@ import { uploadAudio, getAudioUrl, deleteAudio, getUploadUrl } from '../config/s
 import { transcribeAudio, transcribeFromUrl } from '../config/transcription.js';
 import { transcribeAudioSarvam, transcribeFromUrlSarvam, translateText, LANG_TO_SARVAM_CODE } from '../config/sarvam.js';
 import { generateSummary, generateMeetingMinutes, extractActionItems, generateTitle } from '../config/gemini.js';
-import { getPlanLimits, getActivePlan, getEffectiveLimits } from '../utils/planLimits.js';
+import { getActivePlan, getEffectiveLimits } from '../utils/planLimits.js';
 import { logError } from '../utils/logError.js';
 
 // ─── Plan limit helpers ──────────────────────────────────────────────────────
@@ -226,7 +226,7 @@ router.post('/finalize-upload', async (req, res) => {
     }
 
     const finalTitle = title || `Recording ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}`;
-    const limits = getPlanLimits(userDoc);
+    const limits = await getEffectiveLimits(userDoc);
     const inlineBuffer = tempUpload ? audioBuffer : null;
     const willTranscribe = (audioInfo.audioKey || inlineBuffer) && (process.env.OPENAI_API_KEY || process.env.SARVAM_API_KEY);
 
@@ -498,7 +498,7 @@ router.post('/', async (req, res) => {
       : (audioKey ? (clientAudioSize || 0) : 0);
     const check = await checkCreateLimits(req.user.id, userDoc, duration || 0, incomingBytes);
     if (!check.ok) return res.status(check.status).json({ error: check.error, code: check.code });
-    const limits = getPlanLimits(userDoc);
+    const limits = await getEffectiveLimits(userDoc);
 
     let audioInfo = { audioKey: null, audioUrl: null, audioSize: 0 };
     let inlineBuffer = null; // only set for the base64/tempUpload path
@@ -660,7 +660,7 @@ router.post('/:id/transcribe', async (req, res) => {
       console.log('Downloading and transcribing audio...');
 
       const userDoc = await User.findById(req.user.id);
-      const limits = getPlanLimits(userDoc);
+      const limits = await getEffectiveLimits(userDoc);
       const usesSarvam = isIndianUser(userDoc) && !!process.env.SARVAM_API_KEY && limits.indianLanguages;
       const langCode = getSarvamLanguageCode(userDoc);
 

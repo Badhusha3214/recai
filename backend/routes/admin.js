@@ -58,7 +58,7 @@ router.get('/users', async (req, res) => {
 
     const [users, total] = await Promise.all([
       User.find(query)
-        .select('name email isVerified privacyAccepted privacyAcceptedAt role plan planBillingCycle planStartDate planExpiresAt createdAt lastLoginAt loginCount googleId')
+        .select('name email isVerified privacyAccepted privacyAcceptedAt role plan planBillingCycle planStartDate planExpiresAt createdAt lastLoginAt loginCount googleId featureOverrides')
         .sort({ createdAt: -1 })
         .skip((page - 1) * limit)
         .limit(limit)
@@ -86,7 +86,7 @@ router.get('/users', async (req, res) => {
 router.get('/users/:id', async (req, res) => {
   try {
     const user = await User.findById(req.params.id)
-      .select('name email isVerified privacyAccepted privacyAcceptedAt role plan planBillingCycle planStartDate planExpiresAt createdAt lastLoginAt loginCount googleId');
+      .select('name email isVerified privacyAccepted privacyAcceptedAt role plan planBillingCycle planStartDate planExpiresAt createdAt lastLoginAt loginCount googleId featureOverrides');
     if (!user) return res.status(404).json({ error: 'User not found' });
 
     const recordings = await Recording.find({ user: user._id })
